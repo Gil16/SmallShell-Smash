@@ -34,7 +34,7 @@ class JobsList {
 public:
  JobsList()
  {
-     m_pvJobs = new vector ... ; // TODO
+     m_pvJobs = new vector <JobEntry> ; // TODO
      memset(&m_pForeground, 0, sizeof(m_pForeground));
  };
  ~JobsList()
@@ -45,8 +45,9 @@ public:
  void addJob(string a_strCommand, int a_nPid, int a_nstatusJobs, int a_nJobId=-1, bool a_bForeground = false);
  void applyToAll(void (*a_pfun)(int));
  //--------will add above to smash------
+ void printJobsList (); // prints info on jobs from min job id to max from JobsList
  void removeJobByPlace(int a_viJobs);// goes to node in vector and checks.If finished-removes.
- bool printJobByPlace(int a_viJobs);// goes to node and prints info
+ void printJobByPlace(int a_viJobs);// goes to node and prints info
  void removeFinishedJobs();
  void updateJobstatusByPlace(int a_viJobs);// goes to node in vector and updates status
  void updateJobstatusById(int a_nstatus,pid_t a_nPID);
@@ -94,6 +95,52 @@ void JobsList::applyToAll(void (*a_pfun)(int))
 	for(int i=0;i<JobsList->m_pvJobs.size();i++)
 	{
 		a_pfun(i);
+	}
+}
+
+void JobsList::printJobsList ()  //To add to class list
+{
+	int ntemp_min=maxJobId;
+	int nactual_min=0;
+	if(m_pvJobs.size()==0)
+	{
+		cout<<"List is empty, nothing to print"<<endl;
+	}
+	for(int j=0;j<JobsList->m_pvJobs.size();j++)
+	{
+	   for(int i=0;i<JobsList->m_pvJobs.size();i++)//find min job id
+	   {
+	  	   if(ntemp_min > m_pvJobs[i].JobId && nactual_min< m_pvJobs[i].JobId)
+		   {
+			   // enters in "if" only with job_id above low bound and smaller than current min
+			   ntemp_min=m_pvJobs[i].JobId;
+		   }
+	   }
+	   nactual_min=ntemp_min;// setting new low boundary
+	   printJobByPlace(nactual_min);
+	   ntemp_min=maxJobId;
+    }
+}
+
+void JobsList::printJobByPlace(int a_viJobs)
+{
+	cout<<"["<<m_pvJobs[a_viJobs].JobId<<"] ";
+	cout<<m_pvJobs[a_viJobs].sJobsCommand;
+	cout<<": "<<m_pvJobs[a_viJobs].PID<<" ";
+	time_t tactual_time=time(NULL);
+	double elapsed_time=difftime(tactual_time,m_pvJobs[a_viJobs].time_started);
+	cout<< elapsed_time<< " secs";
+	if(m_pvJobs[a_viJobs].statusJobs==0)
+	{
+		cout<<" (stopped)"<<endl;
+	}
+	if(m_pvJobs[a_viJobs].statusJobs==1)
+	{
+		cout<<endl;
+	}
+	else
+	{
+		cout<< "someting wrong:"<< " status is-"<<m_pvJobs[a_viJobs].statusJobs<<endl; //debugging
 	}
 }
 
