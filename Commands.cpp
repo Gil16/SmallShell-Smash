@@ -149,8 +149,6 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
 	string cmd_s = string(cmd_line);
 	vector<string> args;
 	split(cmd_s, args);
-	cout << args.size() << endl;
-	getchar(); // debugging pause
     if (args.size() == 0)
     {
         //error handling here
@@ -175,23 +173,23 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
 	}
 //starting here still unimplemented commands, just for skeleton use
 //jobs in process- in lab.cpp edited before beeing put here and into header	
-	else if (args[0].compare("jobs") == 0)  //potential bug
+	else if(args[0].compare("jobs") == 0)  //potential bug
     {   
 		return new JobsCommand (cmd_line);
     }
-	else if (args[0].compare("kill") == 0)
+	else if(args[0].compare("kill") == 0)
     {
 		return new KillCommand (cmd_line);
 	}
-	else if (cmd_s.find("fg") == 0)
+	else if(cmd_s.find("fg") == 0)	// needs to be changed
     {
 		return new ForegroundCommand (cmd_line);
 	}
-	else if (cmd_s.find("bg") == 0)
+	else if(cmd_s.find("bg") == 0)
     {
 		return new BackgroundCommand (cmd_line);
 	}
-	else if (cmd_s.find("quit") == 0)
+	else if(cmd_s.find("quit") == 0)
     {
 		return new QuitCommand (cmd_line);
 	}
@@ -204,29 +202,23 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
 
 void ChpromptCommand::execute()
 {
-	cout << "ChpromptCommand" << endl ;//debugging
 	vector<string> args;
 	split (c_cmd_line, args);	
-	getchar(); //debugging
 	SmallShell& smash = SmallShell::getInstance();
-	getchar(); //debugging
 	if (args.size() > 1)
 	{
-       string cursor_Prompt = args[1];
+       string cursor_Prompt=args[1];
        cursor_Prompt.push_back('>');
 	   smash.SetPrompt(cursor_Prompt);
     }
     else
     {
-		cout << "else in ChpromtCommand" << endl;
-		getchar();
 		smash.SetPrompt("smash>");
 	}
 }
 
 void ShowPidCommand::execute()
 {
-	cout << "ShowPidCommand!" << endl;
 	cout << "smash pid is " << getpid() << endl;
 }
 
@@ -234,8 +226,7 @@ void GetCurrDirCommand::execute ()
 {
 	char* ca_CurrDir;
 	ca_CurrDir = get_current_dir_name();
-	cout << endl << ca_CurrDir << endl;
-	cout << "in PWD exec" << endl;
+	cout << ca_CurrDir << endl;
 	free(ca_CurrDir);
 } 
 
@@ -312,12 +303,17 @@ static bool checkIfStrIsNum(string str){
 	return true;
 }
 
+
+
 void JobsCommand::execute()
 {
+	cout << "JobsCommand" << endl; //debugging
 	SmallShell& smash = SmallShell::getInstance();
 	JobsList* jobs_list = smash.GetJobList();
 	jobs_list->printJobsList();
 }
+
+
 
 void KillCommand::execute()
 {
@@ -360,31 +356,29 @@ void KillCommand::execute()
 
 void ExternalCommand::execute(){
 	cout << "ExternalCommand" << endl; //debugging
+	
 	vector<string> s_cmd;
 	split (c_cmd_line, s_cmd);
-	getchar(); //debugging
 	SmallShell& smash = SmallShell::getInstance();
-	JobsList* jobs_list = smash.GetJobList();
-	char* temp_cmd = nullptr;
-	strcpy(temp_cmd, c_cmd_line);
-	if(temp_cmd == nullptr)
-	{
-		return; // need to return some error, strcpy failed
-	}
-	string last_string = s_cmd.back();
-	char last_letter = last_string.back();
+	cout<<" after shell smash: "<<s_cmd[0]<<endl;
+	JobsList* jobs_list= smash.GetJobList();
+	char* temp_cmd=new char[strlen(c_cmd_line)+1];
+	cout<<"before strcpy :"<<c_cmd_line<<endl;
+	strcpy(temp_cmd, c_cmd_line);	
+	string last_string=s_cmd.back();
+	char last_letter=last_string.back();
 	if(last_letter == '&'){
 		pid_t pid = fork();
 		if (pid == 0) {
 			setpgrp();
 			pid_t childPID=getpid();
 			printf("if: child pid = %d\n", childPID);
-			jobs_list->addJob(s_cmd[0], childPID, JobsList::eJobStatus_Background);
 			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL}; // args[0] might be just "bash"
 			execv(args[0], args);
 		} 
 		else 
 		{
+			jobs_list->addJob(s_cmd[0], pid, JobsList::eJobStatus_Background);
 			printf("if: parent pid = %d\n", getpid());
 		}
 	} 
@@ -393,14 +387,17 @@ void ExternalCommand::execute(){
 		pid_t pid = fork();
 		if (pid == 0) {
 			setpgrp();
-			printf("else: child pid = %d\n", getpid());
+			pid_t childPID=getpid();
+			printf("else: child pid = %d\n", childPID);
 			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, 0}; // args[0] might be just "bash"
 			execv(args[0], args);
 		} else {
+			jobs_list->addJobToForeground(s_cmd[0], pid);
 			wait(NULL);
 			printf("else: parent pid = %d\n", getpid());
 		}
 	}
+	delete [] temp_cmd;
 }
 
 
@@ -416,14 +413,22 @@ void JobsList::addJob(string a_strCommand, int a_nPid, EJobStatus a_status)
 	if(m_pvJobs->size() == 0) 
 	{
 		njobId=1;
+		cout<< "adding first job"<<endl;
 	}
 	else
 	{
 		njobId = (m_pvJobs->back().nId)+1;
 	}
 	JobsList::JobEntry a_sJEtemp {.nId = njobId, .PID = a_nPid, .sCommand = a_strCommand, .status = a_status, .time_started = time(NULL) };
+	cout<<"before pushing back"<<endl;
 	m_pvJobs->push_back(a_sJEtemp);
+	cout<<m_pvJobs->at(0).nId<<" my size is:"<<m_pvJobs->size()<<endl;
 	//JobsList.maxJobId++; //buggy
+}
+
+void JobsList::addJobToForeground(string a_strCommand, int a_nPid) //sets jobId to -1 since it was never on joblist
+{
+   m_pForeground = {.nId = -1, .PID = a_nPid, .sCommand = a_strCommand, .status = eJobStatus_Foreground, .time_started = time(NULL) };	
 }
 
 void JobsList::applyToAll(void (*a_pfun)(int))
@@ -437,56 +442,52 @@ void JobsList::applyToAll(void (*a_pfun)(int))
 	}
 }
 
-/*void JobsList::printJobsList ()  //To add to class list   ///Have no idea what are you trying to do here, just use aplly
+void JobsList::printJobsList ()  //To add to class list   ///Have no idea what are you trying to do here, just use aplly
 {
-	int ntemp_min=maxJobId;
-	int nactual_min=0;
+	
 	if(m_pvJobs->size()==0)
 	{
 		cout<<"List is empty, nothing to print"<<endl;
 	}
-	for(uint j=0;j< m_pvJobs->size();j++)
-	{
-	   for(uint i=0;i<m_pvJobs->size();i++)//find min job id
+	else
+	{	
+	   for(uint j=0;j< m_pvJobs->size();j++)
 	   {
-	  	   if(ntemp_min > m_pvJobs->at(i).nId && nactual_min< m_pvJobs->at(i).nId)
-		   {
-			   // enters in "if" only with job_id above low bound and smaller than current min
-			   ntemp_min=m_pvJobs->at(i).nId;
-		   }
-	   }
-	   nactual_min=ntemp_min;// setting new low boundary
-	   printJobByPlace(nactual_min);
-	   ntemp_min=maxJobId;
-    }
+		  updateJobstatusByPlace(j);
+	      printJobByPlace(j);
+       }
+   }
 }
-*/
+
 
 void JobsList::printJobByPlace(int a_viJobs)
 {
-	cout << "[" << m_pvJobs->operator[](a_viJobs).nId << "] ";
-	cout << m_pvJobs->operator[](a_viJobs).sCommand;
-	cout << ": " << m_pvJobs->operator[](a_viJobs).PID << " ";
+	cout << "[" << m_pvJobs->at(a_viJobs).nId << "] ";
+	cout << m_pvJobs->at(a_viJobs).sCommand;
+	cout << ": " << m_pvJobs->at(a_viJobs).PID << " ";
 	time_t tactual_time = time(NULL);
-	double elapsed_time = difftime(tactual_time,m_pvJobs->operator[](a_viJobs).time_started);
+	double elapsed_time = difftime(tactual_time,m_pvJobs->at(a_viJobs).time_started);
 	cout << elapsed_time << " secs";
-	if(m_pvJobs->operator[](a_viJobs).status == eJobStatus_Stopped)
+	cout<<endl;//debugging
+	cout<<m_pvJobs->at(a_viJobs).status<<endl; //debugging
+	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Stopped)
 	{
 		cout<<" (stopped)"<<endl;
 	}
-	if(m_pvJobs->operator[](a_viJobs).status == eJobStatus_Background)
+	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Background)
 	{
 		cout << endl;
 	}
 	else
 	{
-		cout << "someting wrong:" << " status is-" << m_pvJobs->operator[](a_viJobs).status << endl; //debugging
+		cout << "something wrong:" << " status is-" << m_pvJobs->at(a_viJobs).status << endl; //debugging
 	}
 }
 
 void JobsList::updateJobstatusByPlace(int a_viJobs)
 {
 	int wstatus;
+	cout<<"Entering update function"<<endl;
 	pid_t w = waitpid(m_pvJobs->at(a_viJobs).PID, &wstatus, WNOHANG);
     if(w == -1) 
     {
@@ -496,7 +497,7 @@ void JobsList::updateJobstatusByPlace(int a_viJobs)
     {
 		if(WIFEXITED(wstatus))
 		{
-			printf("exited, status=%d\n", WEXITSTATUS(wstatus));
+			printf("exited, status=%d\n", WEXITSTATUS(wstatus));  //problem is here
 			m_pvJobs->at(a_viJobs).status = eJobStatus_Finished;
 		} else if(WIFSIGNALED(wstatus)) {
 			printf("killed by signal %d\n", WTERMSIG(wstatus));
@@ -624,14 +625,14 @@ JobsList::JobEntry* JobsList::getLastStoppedJob()// LastStopped needs to be upda
 
 
 void SmallShell::executeCommand(const char *cmd_line) {
-  // TODO: Add your implementation here
-  // for example:
-  Command* cmd = CreateCommand(cmd_line);
-  if(cmd != nullptr) 
-  {
-	cmd->execute();
-	delete cmd;
-  }
+	// TODO: Add your implementation here
+	// for example:
+	Command* cmd = CreateCommand(cmd_line);
+	if(cmd != nullptr) 
+	{
+		cmd->execute();
+		delete cmd;
+	}
   // Please note that you must fork smash process for some commands (e.g., external commands....)
 }
 

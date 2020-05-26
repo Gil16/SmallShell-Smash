@@ -12,11 +12,11 @@ using namespace std;
 class JobsList;
 
 class Command {
-	const char* c_cmd_line;
+	
 // TODO: Add your data members
  public:
-	Command(const char* cmd_line){ cout << "Command class constracted" << endl; c_cmd_line = cmd_line; }
-	virtual ~Command(){ cout << "Command class destroyed"<<endl; }
+	Command(const char* cmd_line){ }
+	virtual ~Command(){}
 	virtual void execute() = 0;
   //virtual void prepare();
   //virtual void cleanup();
@@ -25,14 +25,14 @@ class Command {
 
 class BuiltInCommand : public Command {
  public:
-	BuiltInCommand(const char* cmd_line):Command(cmd_line){ cout << "BIC class constracted" << endl; }
-	virtual ~BuiltInCommand() { cout << "BIC class destroyed" << endl; }
+	BuiltInCommand(const char* cmd_line):Command(cmd_line){}
+	virtual ~BuiltInCommand() {}
 };
 
 class ExternalCommand : public Command {
  public:
     const char* c_cmd_line;
-	ExternalCommand(const char* cmd_line):Command(cmd_line){}
+	ExternalCommand(const char* cmd_line):Command(cmd_line){c_cmd_line = cmd_line;}
 	~ExternalCommand() {}
 	void execute() override;
 };
@@ -61,7 +61,7 @@ class ChangeDirCommand : public BuiltInCommand {
 // TODO: Add your data members public:
   public:
 	const char* c_cmd_line;
-	ChangeDirCommand(const char* cmd_line):BuiltInCommand(cmd_line){ cout << "ChangeDir class constracted" << endl; }
+	ChangeDirCommand(const char* cmd_line):BuiltInCommand(cmd_line){ cout << "ChangeDir class constracted" << endl;c_cmd_line = cmd_line; }
 	virtual ~ChangeDirCommand() { cout << "ChangeDir class destroyed" << endl; }
 	void execute() override ;
 };
@@ -125,12 +125,13 @@ public:
 	   time_t time_started;
     };
 
-	JobsList(){ m_pvJobs = new vector<JobEntry>; }
-	~JobsList() { delete m_pvJobs; }
+	JobsList(){ m_pvJobs = new vector<JobEntry>; memset(&m_pForeground, 0, sizeof(m_pForeground)); }
+	~JobsList() { cout<<"Delete JobsList"<<endl;delete m_pvJobs; }
 	void addJob(string a_strCommand, int a_nPid, EJobStatus a_status); // when you add it's always not in foreground, otherwise it's a bug.
+	void addJobToForeground(string a_strCommand, int a_nPid);//adds foreground jobs for tracking to m_pForeground 
 	void applyToAll(void (*a_pfun)(int));
  //--------will add above to smash------
-	//void printJobsList (); // prints info on jobs from min job id to max from JobsList //Nope, you just pass print one job command to apply to list
+	void printJobsList (); // prints info on jobs from min job id to max from JobsList //Nope, you just pass print one job command to apply to list
 	bool removeJobByPlace(int a_viJobs);
 	void printJobByPlace(int a_viJobs);// goes to node and prints info
 	void removeFinishedJobs();
@@ -143,6 +144,7 @@ public:
 	JobEntry* getLastStoppedJob();
  // TODO: Add extra methods or modify exisitng ones as needed
 	vector<JobEntry>* m_pvJobs;
+	JobEntry m_pForeground;
 private:
     // TODO: Add your data members
 	int getIndexById(int a_jobId); 
@@ -157,9 +159,9 @@ class JobsCommand : public BuiltInCommand {
  // TODO: Add your data members
 	const char* c_cmd_line;
  public:
-	JobsCommand(const char* cmd_line):BuiltInCommand(cmd_line){}
+	JobsCommand(const char* cmd_line):BuiltInCommand(cmd_line){c_cmd_line = cmd_line;}
 	~JobsCommand() {}
-	void execute() override { cout << "JobsCommand" << endl; }
+	void execute() override;
 };
 
 class KillCommand : public BuiltInCommand {
@@ -167,7 +169,7 @@ class KillCommand : public BuiltInCommand {
   //    JobsList* m_pJobsList;
     const char* c_cmd_line;
  public:
-	KillCommand(const char* cmd_line):BuiltInCommand(cmd_line){}
+	KillCommand(const char* cmd_line):BuiltInCommand(cmd_line){c_cmd_line = cmd_line;}
 	~KillCommand() {}
 	void execute() override;
 };
@@ -211,9 +213,9 @@ class CopyCommand : public BuiltInCommand {
 class ChpromptCommand : public BuiltInCommand {
  public:
 	const char* c_cmd_line;
-	ChpromptCommand (const char* cmd_line):BuiltInCommand(cmd_line){ c_cmd_line = cmd_line; }
-	~ChpromptCommand () {}
-	void execute () override;
+	ChpromptCommand(const char* cmd_line):BuiltInCommand(cmd_line){ c_cmd_line = cmd_line; }
+	~ChpromptCommand() {}
+	void execute() override;
 	
 };
 
