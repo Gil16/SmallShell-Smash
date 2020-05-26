@@ -312,6 +312,13 @@ static bool checkIfStrIsNum(string str){
 	return true;
 }
 
+void JobsCommand::execute()
+{
+	SmallShell& smash = SmallShell::getInstance();
+	JobsList* jobs_list = smash.GetJobList();
+	jobs_list->printJobsList();
+}
+
 void KillCommand::execute()
 {
 	cout << "KillCommand" << endl; //debugging
