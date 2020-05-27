@@ -61,8 +61,8 @@ class ChangeDirCommand : public BuiltInCommand {
 // TODO: Add your data members public:
   public:
 	const char* c_cmd_line;
-	ChangeDirCommand(const char* cmd_line):BuiltInCommand(cmd_line){ cout << "ChangeDir class constracted" << endl;c_cmd_line = cmd_line; }
-	virtual ~ChangeDirCommand() { cout << "ChangeDir class destroyed" << endl; }
+	ChangeDirCommand(const char* cmd_line):BuiltInCommand(cmd_line){ c_cmd_line = cmd_line; }
+	virtual ~ChangeDirCommand() {}
 	void execute() override ;
 };
 
@@ -103,48 +103,61 @@ class HistoryCommand : public BuiltInCommand {
 };
 
 
+typedef enum{
+        eJobStatus_Stopped,
+        eJobStatus_Background,
+        eJobStatus_Foreground,
+        eJobStatus_Finished //Have no idea why you need this one, you shall just remove the job instead of changing to it
+} EJobStatus;
+
+
+struct JobEntry {
+	// TODO: Add your data members
+	int nId;
+	pid_t PID;
+	string sCommand;
+	EJobStatus status; // 0-stopped,1-backgrounded,2-foregrounded,3-finished
+	time_t time_started;
+	   
+	JobEntry(int nid, pid_t pid, string scommand, EJobStatus stat, time_t t_started)
+	{
+			nId = nid;
+			PID = pid;
+			sCommand = scommand;
+			status = stat;
+			time_started = t_started;
+	}
+};
+
+
 //-------------------------------JobsList Class-----------------------
 //--------------------------------------------------------------------
 
 class JobsList {
 public: 
-    typedef enum
-    {
-        eJobStatus_Stopped,
-        eJobStatus_Background,
-        eJobStatus_Foreground,
-        eJobStatus_Finished //Have no idea why you need this one, you shall just remove the job instead of changing to it
-    } EJobStatus;
 
-	struct JobEntry {
-	   // TODO: Add your data members
-	   int nId;
-	   pid_t PID;
-	   string sCommand;
-	   EJobStatus status; // 0-stopped,1-backgrounded,2-foregrounded,3-finished
-	   time_t time_started;
-    };
-
-	JobsList(){ m_pvJobs = new vector<JobEntry>; memset(&m_pForeground, 0, sizeof(m_pForeground)); }
-	~JobsList() { cout<<"Delete JobsList"<<endl;delete m_pvJobs; }
+	JobsList(){ m_pvJobs = new vector<JobEntry>; }
+	~JobsList() { delete m_pvJobs; }
 	void addJob(string a_strCommand, int a_nPid, EJobStatus a_status); // when you add it's always not in foreground, otherwise it's a bug.
-	void addJobToForeground(string a_strCommand, int a_nPid);//adds foreground jobs for tracking to m_pForeground 
+	void addJobToForeground(string a_strCommand, int a_nPid); 
 	void applyToAll(void (*a_pfun)(int));
  //--------will add above to smash------
 	void printJobsList (); // prints info on jobs from min job id to max from JobsList //Nope, you just pass print one job command to apply to list
 	bool removeJobByPlace(int a_viJobs);
 	void printJobByPlace(int a_viJobs);// goes to node and prints info
+	void printJobBeforeQuit(JobEntry job);
 	void removeFinishedJobs();
 	void updateJobstatusByPlace(int a_viJobs);
 	void updateJobstatusByPID(EJobStatus a_nstatus,pid_t a_nPID);
 	JobEntry* getJobById(int a_jobId);// if job is not in list returns NULL
 	void removeJobById(int a_jobId);
+	void removeJobByPID(int pid);
+	void killAllJobs();
 	JobEntry* getLastJob();// if no jobs in list 
 	JobEntry* getForegroundJob();
 	JobEntry* getLastStoppedJob();
  // TODO: Add extra methods or modify exisitng ones as needed
 	vector<JobEntry>* m_pvJobs;
-	JobEntry m_pForeground;
 private:
     // TODO: Add your data members
 	int getIndexById(int a_jobId); 
@@ -155,11 +168,12 @@ private:
 //-----------------------JobsList Class ends here---------------------
 //--------------------------------------------------------------------
 
+
 class JobsCommand : public BuiltInCommand {
  // TODO: Add your data members
 	const char* c_cmd_line;
  public:
-	JobsCommand(const char* cmd_line):BuiltInCommand(cmd_line){c_cmd_line = cmd_line;}
+	JobsCommand(const char* cmd_line):BuiltInCommand(cmd_line){ c_cmd_line = cmd_line; }
 	~JobsCommand() {}
 	void execute() override;
 };
@@ -169,7 +183,7 @@ class KillCommand : public BuiltInCommand {
   //    JobsList* m_pJobsList;
     const char* c_cmd_line;
  public:
-	KillCommand(const char* cmd_line):BuiltInCommand(cmd_line){c_cmd_line = cmd_line;}
+	KillCommand(const char* cmd_line):BuiltInCommand(cmd_line){ c_cmd_line = cmd_line; }
 	~KillCommand() {}
 	void execute() override;
 };
@@ -192,11 +206,11 @@ class BackgroundCommand : public BuiltInCommand {
 
 class QuitCommand : public BuiltInCommand {
 // TODO: Add your data members public:
-    JobsList* m_pJobsList;
+	const char* c_cmd_line;
  public:
-	QuitCommand(const char* cmd_line):BuiltInCommand(cmd_line){}
+	QuitCommand(const char* cmd_line):BuiltInCommand(cmd_line){ c_cmd_line = cmd_line; }
 	~QuitCommand() {}
-	void execute() override { cout << "QuitCommand!" << endl; }
+	void execute() override;
 };
 
 // TODO: should it really inhirit from BuiltInCommand ?
@@ -231,6 +245,7 @@ class SmallShell {
     Command *CreateCommand(const char* cmd_line);
  public:
 	JobsList* m_pJobsList;
+	static JobEntry *m_pForeground;
 	SmallShell(SmallShell const&)      = delete; // disable copy ctor
 	void operator=(SmallShell const&)  = delete; // disable = operator
 	static SmallShell& getInstance() // make SmallShell singleton

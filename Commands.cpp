@@ -10,6 +10,8 @@
 
 using namespace std;
 
+JobEntry *SmallShell::m_pForeground;
+
 const std::string WHITESPACE = " \n\r\t\f\v";
 
 #if 0
@@ -124,6 +126,7 @@ void _removeBackgroundSign(char* cmd_line) {
 SmallShell::SmallShell()
 {
 	m_pJobsList = new JobsList();
+	m_pForeground = nullptr;
     SetPrompt("");
 }
 
@@ -154,14 +157,14 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
         //error handling here
         return nullptr;
     }
-	if (args[0].compare("chprompt")==0)
+	if (args[0].compare("chprompt") == 0)
 	//if no command issued split will issue chprompt command on her own
     {
-		return new ChpromptCommand (cmd_line);
+		return new ChpromptCommand(cmd_line);
 	}
 	else if (args[0].compare("showpid") == 0)
     {
-		return new ShowPidCommand (cmd_line);
+		return new ShowPidCommand(cmd_line);
 	}
 	else if (args[0].compare("pwd") == 0) 
     {
@@ -169,29 +172,29 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     }
 	else if (args[0].compare("cd") == 0)
     {
-		return new ChangeDirCommand (cmd_line);
+		return new ChangeDirCommand(cmd_line);
 	}
 //starting here still unimplemented commands, just for skeleton use
 //jobs in process- in lab.cpp edited before beeing put here and into header	
 	else if(args[0].compare("jobs") == 0)  //potential bug
     {   
-		return new JobsCommand (cmd_line);
+		return new JobsCommand(cmd_line);
     }
 	else if(args[0].compare("kill") == 0)
     {
-		return new KillCommand (cmd_line);
+		return new KillCommand(cmd_line);
 	}
 	else if(cmd_s.find("fg") == 0)	// needs to be changed
     {
-		return new ForegroundCommand (cmd_line);
+		return new ForegroundCommand(cmd_line);
 	}
 	else if(cmd_s.find("bg") == 0)
     {
-		return new BackgroundCommand (cmd_line);
+		return new BackgroundCommand(cmd_line);
 	}
-	else if(cmd_s.find("quit") == 0)
+	else if(args[0].compare("quit") == 0)
     {
-		return new QuitCommand (cmd_line);
+		return new QuitCommand(cmd_line);
 	}
 	else 
 	{
@@ -207,7 +210,7 @@ void ChpromptCommand::execute()
 	SmallShell& smash = SmallShell::getInstance();
 	if (args.size() > 1)
 	{
-       string cursor_Prompt=args[1];
+       string cursor_Prompt = args[1];
        cursor_Prompt.push_back('>');
 	   smash.SetPrompt(cursor_Prompt);
     }
@@ -232,12 +235,9 @@ void GetCurrDirCommand::execute ()
 
 void ChangeDirCommand::execute()
 {
-	cout << "ChangeDirCommand" << endl;
 	vector<string> args;
 	split (c_cmd_line, args);	
-	getchar();
 	SmallShell& smash = SmallShell::getInstance();
-	getchar();
 	if(args.size()==1)
 	{
 		 cout << smash.GetPrompt(); 
@@ -307,7 +307,6 @@ static bool checkIfStrIsNum(string str){
 
 void JobsCommand::execute()
 {
-	cout << "JobsCommand" << endl; //debugging
 	SmallShell& smash = SmallShell::getInstance();
 	JobsList* jobs_list = smash.GetJobList();
 	jobs_list->printJobsList();
@@ -317,10 +316,8 @@ void JobsCommand::execute()
 
 void KillCommand::execute()
 {
-	cout << "KillCommand" << endl; //debugging
 	vector<string> args;
 	split (c_cmd_line, args);	
-	getchar(); //debugging
 	SmallShell& smash = SmallShell::getInstance();
 	JobsList* jobs_list = smash.GetJobList();
 	if(args.size() != 3 || args[1].substr(0,1) != "-")
@@ -343,7 +340,7 @@ void KillCommand::execute()
 	}
 	else
 	{
-		JobsList::JobEntry* job = jobs_list->getJobById(jobSeqNum);
+		JobEntry* job = jobs_list->getJobById(jobSeqNum);
 		jobs_list->removeJobById(jobSeqNum);
 		{
 			cerr << "smash error: kill: job-id " << jobSeqNum << " does not exist" << endl;
@@ -355,31 +352,25 @@ void KillCommand::execute()
 }
 
 void ExternalCommand::execute(){
-	cout << "ExternalCommand" << endl; //debugging
-	
 	vector<string> s_cmd;
-	split (c_cmd_line, s_cmd);
+	split(c_cmd_line, s_cmd);
 	SmallShell& smash = SmallShell::getInstance();
-	cout<<" after shell smash: "<<s_cmd[0]<<endl;
-	JobsList* jobs_list= smash.GetJobList();
-	char* temp_cmd=new char[strlen(c_cmd_line)+1];
-	cout<<"before strcpy :"<<c_cmd_line<<endl;
+	JobsList* jobs_list = smash.GetJobList();
+	char* temp_cmd = new char[strlen(c_cmd_line)+1];
 	strcpy(temp_cmd, c_cmd_line);	
-	string last_string=s_cmd.back();
-	char last_letter=last_string.back();
+	string last_string = s_cmd.back();
+	char last_letter = last_string.back();
 	if(last_letter == '&'){
 		pid_t pid = fork();
 		if (pid == 0) {
 			setpgrp();
-			pid_t childPID=getpid();
-			printf("if: child pid = %d\n", childPID);
-			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL}; // args[0] might be just "bash"
+            temp_cmd[strlen(temp_cmd)-1] = '\0';
+			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL};
 			execv(args[0], args);
+			exit(0);
 		} 
-		else 
-		{
-			jobs_list->addJob(s_cmd[0], pid, JobsList::eJobStatus_Background);
-			printf("if: parent pid = %d\n", getpid());
+		else {
+			jobs_list->addJob(temp_cmd, pid, eJobStatus_Background);
 		}
 	} 
 	else 
@@ -387,17 +378,45 @@ void ExternalCommand::execute(){
 		pid_t pid = fork();
 		if (pid == 0) {
 			setpgrp();
-			pid_t childPID=getpid();
-			printf("else: child pid = %d\n", childPID);
-			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, 0}; // args[0] might be just "bash"
+			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL};
 			execv(args[0], args);
+			exit(0);
 		} else {
-			jobs_list->addJobToForeground(s_cmd[0], pid);
+			jobs_list->addJobToForeground(temp_cmd, pid);
 			wait(NULL);
-			printf("else: parent pid = %d\n", getpid());
 		}
 	}
 	delete [] temp_cmd;
+}
+
+void JobsList::printJobBeforeQuit(JobEntry job)
+{
+	cout << job.PID << ": " << job.sCommand << endl;
+}
+
+void JobsList::killAllJobs()
+{
+	cout << "smash: sending SIGKILL signal to " << m_pvJobs->size() << " jobs:" << endl;
+	for(uint i=0 ; i < m_pvJobs->size() ; i++)
+	{
+		kill(m_pvJobs->at(i).PID, SIGKILL);
+		printJobBeforeQuit(m_pvJobs->at(i));
+	}
+}
+
+void QuitCommand::execute()
+{
+	vector<string> s_cmd;
+	split(c_cmd_line, s_cmd);
+	SmallShell& smash = SmallShell::getInstance();
+	JobsList* jobs_list = smash.GetJobList();
+	
+	if(s_cmd.size() > 1 && s_cmd[1] == "kill")
+	{
+		// remove finished jobs
+		jobs_list->killAllJobs();  // kill all unfinished jobs
+	}
+	exit(0);
 }
 
 
@@ -412,23 +431,25 @@ void JobsList::addJob(string a_strCommand, int a_nPid, EJobStatus a_status)
 	int njobId;
 	if(m_pvJobs->size() == 0) 
 	{
-		njobId=1;
-		cout<< "adding first job"<<endl;
+		njobId = 1;
 	}
 	else
 	{
 		njobId = (m_pvJobs->back().nId)+1;
 	}
-	JobsList::JobEntry a_sJEtemp {.nId = njobId, .PID = a_nPid, .sCommand = a_strCommand, .status = a_status, .time_started = time(NULL) };
-	cout<<"before pushing back"<<endl;
+	JobEntry a_sJEtemp {.nId = njobId, .PID = a_nPid, .sCommand = a_strCommand, .status = a_status, .time_started = time(NULL) }; // change to new JobEntry(..) ?
 	m_pvJobs->push_back(a_sJEtemp);
-	cout<<m_pvJobs->at(0).nId<<" my size is:"<<m_pvJobs->size()<<endl;
 	//JobsList.maxJobId++; //buggy
 }
 
 void JobsList::addJobToForeground(string a_strCommand, int a_nPid) //sets jobId to -1 since it was never on joblist
 {
-   m_pForeground = {.nId = -1, .PID = a_nPid, .sCommand = a_strCommand, .status = eJobStatus_Foreground, .time_started = time(NULL) };	
+	SmallShell::m_pForeground = new JobEntry(-1, a_nPid, a_strCommand, eJobStatus_Foreground, time(NULL));
+/*	smash.m_pForeground->nId = -1;
+	smash.m_pForeground->PID = a_nPid;
+	smash.m_pForeground->sCommand = a_strCommand;
+	smash.m_pForeground->status = eJobStatus_Foreground;
+	smash.m_pForeground->time_started = time(NULL) ;	*/
 }
 
 void JobsList::applyToAll(void (*a_pfun)(int))
@@ -451,11 +472,12 @@ void JobsList::printJobsList ()  //To add to class list   ///Have no idea what a
 	}
 	else
 	{	
-	   for(uint j=0;j< m_pvJobs->size();j++)
-	   {
-		  updateJobstatusByPlace(j);
-	      printJobByPlace(j);
-       }
+		removeFinishedJobs();
+		for(uint j=0;j< m_pvJobs->size();j++)
+		{
+			updateJobstatusByPlace(j);
+			printJobByPlace(j);
+		}
    }
 }
 
@@ -468,8 +490,6 @@ void JobsList::printJobByPlace(int a_viJobs)
 	time_t tactual_time = time(NULL);
 	double elapsed_time = difftime(tactual_time,m_pvJobs->at(a_viJobs).time_started);
 	cout << elapsed_time << " secs";
-	cout<<endl;//debugging
-	cout<<m_pvJobs->at(a_viJobs).status<<endl; //debugging
 	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Stopped)
 	{
 		cout<<" (stopped)"<<endl;
@@ -480,14 +500,13 @@ void JobsList::printJobByPlace(int a_viJobs)
 	}
 	else
 	{
-		cout << "something wrong:" << " status is-" << m_pvJobs->at(a_viJobs).status << endl; //debugging
+	//	cout << "something wrong:" << " status is-" << m_pvJobs->at(a_viJobs).status << endl; //debugging
 	}
 }
 
 void JobsList::updateJobstatusByPlace(int a_viJobs)
 {
 	int wstatus;
-	cout<<"Entering update function"<<endl;
 	pid_t w = waitpid(m_pvJobs->at(a_viJobs).PID, &wstatus, WNOHANG);
     if(w == -1) 
     {
@@ -497,22 +516,22 @@ void JobsList::updateJobstatusByPlace(int a_viJobs)
     {
 		if(WIFEXITED(wstatus))
 		{
-			printf("exited, status=%d\n", WEXITSTATUS(wstatus));  //problem is here
+		//	printf("exited, status=%d\n", WEXITSTATUS(wstatus));
 			m_pvJobs->at(a_viJobs).status = eJobStatus_Finished;
 		} else if(WIFSIGNALED(wstatus)) {
-			printf("killed by signal %d\n", WTERMSIG(wstatus));
+		//	printf("killed by signal %d\n", WTERMSIG(wstatus));
 			m_pvJobs->at(a_viJobs).status = eJobStatus_Finished;
 		} else if(WIFSTOPPED(wstatus)) {
-			printf("stopped by signal %d\n", WSTOPSIG(wstatus));
+		//	printf("stopped by signal %d\n", WSTOPSIG(wstatus));
 			m_pvJobs->at(a_viJobs).status = eJobStatus_Stopped;
 		} else if(WIFCONTINUED(wstatus)) {
-			printf("continued\n");
+		//	printf("continued\n");
 			m_pvJobs->at(a_viJobs).status = eJobStatus_Background;
 		} 
     }
     if (w == 0)
     {
-		cout<<"Nothing changed for" << w <<endl;
+	//	cout<<"Nothing changed for" << w <<endl;
 	}
 }
 
@@ -558,7 +577,7 @@ void JobsList::removeFinishedJobs()
     }
 }
 
-JobsList::JobEntry* JobsList::getJobById(int a_jobId)
+JobEntry* JobsList::getJobById(int a_jobId)
 {
 	int i = getIndexById(a_jobId);
     if (i >= 0)
@@ -575,9 +594,20 @@ void JobsList::removeJobById(int a_jobId)
     if (i >= 0)
     {
 		m_pvJobs->erase(m_pvJobs->begin()+i);
-		cout << "removed " << a_jobId << endl;
+	//	cout << "removed " << a_jobId << endl;
 //		if(m_pvJobs.size() == 0) 
 //           {maxJobId=JobsList.m_pForeground.JobId;} // it's a bug, just don't use maxJobId
+	}
+}
+
+void JobsList::removeJobByPID(int pid)
+{
+	for(uint i=0 ; i < m_pvJobs->size() ; i++)
+	{
+		if(m_pvJobs->at(i).PID == pid)
+		{
+			m_pvJobs->erase(m_pvJobs->begin()+i);
+		}
 	}
 }
 
@@ -593,7 +623,7 @@ int JobsList::getIndexById(int a_jobId)
     return -1;
 }
 
-JobsList::JobEntry* JobsList::getLastJob()
+JobEntry* JobsList::getLastJob()
 {
 	if(m_pvJobs->size() != 0)
 	{
@@ -602,7 +632,7 @@ JobsList::JobEntry* JobsList::getLastJob()
     return NULL;
 }
 
-JobsList::JobEntry* JobsList::getForegroundJob()
+JobEntry* JobsList::getForegroundJob()
 {
 	if(m_pvJobs->size() == 0)
 	{
@@ -616,7 +646,7 @@ JobsList::JobEntry* JobsList::getForegroundJob()
 	return NULL;
 }
 
-JobsList::JobEntry* JobsList::getLastStoppedJob()// LastStopped needs to be updated by handler
+JobEntry* JobsList::getLastStoppedJob()// LastStopped needs to be updated by handler
 {
 	return getJobById(LastStopped);
 }
