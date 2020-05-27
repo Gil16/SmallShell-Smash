@@ -367,7 +367,7 @@ void ExternalCommand::execute(){
             temp_cmd[strlen(temp_cmd)-1] = '\0';
 			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL};
 			execv(args[0], args);
-			exit(0);
+			exit(EXIT_SUCCESS);
 		} 
 		else {
 			jobs_list->addJob(temp_cmd, pid, eJobStatus_Background);
@@ -380,10 +380,11 @@ void ExternalCommand::execute(){
 			setpgrp();
 			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL};
 			execv(args[0], args);
-			exit(0);
+			exit(EXIT_SUCCESS);
 		} else {
 			jobs_list->addJobToForeground(temp_cmd, pid);
-			wait(NULL);
+			int status;
+			waitpid(pid,&status,WUNTRACED);
 		}
 	}
 	delete [] temp_cmd;
