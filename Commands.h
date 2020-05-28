@@ -139,6 +139,7 @@ public:
 	JobsList(){ m_pvJobs = new vector<JobEntry>; }
 	~JobsList() { delete m_pvJobs; }
 	void addJob(string a_strCommand, int a_nPid, EJobStatus a_status); // when you add it's always not in foreground, otherwise it's a bug.
+	void addJob(JobEntry job);
 	void addJobToForeground(string a_strCommand, int a_nPid); 
 	void applyToAll(void (*a_pfun)(int));
  //--------will add above to smash------
@@ -154,15 +155,17 @@ public:
 	void removeJobByPID(int pid);
 	void killAllJobs();
 	JobEntry* getLastJob();// if no jobs in list 
+	int getLastJobId();
 	JobEntry* getForegroundJob();
 	JobEntry* getLastStoppedJob();
  // TODO: Add extra methods or modify exisitng ones as needed
 	vector<JobEntry>* m_pvJobs;
+	int LastStopped=-1; //-1 on initialization or when no last stopped
 private:
     // TODO: Add your data members
 	int getIndexById(int a_jobId); 
   //int maxJobId=0; // you don't need this, since the list is sorted
-	pid_t LastStopped;
+	
 };
 
 //-----------------------JobsList Class ends here---------------------
@@ -197,11 +200,12 @@ class ForegroundCommand : public BuiltInCommand {
 };
 
 class BackgroundCommand : public BuiltInCommand {
- // TODO: Add your data members   
+ // TODO: Add your data members 
+    const char* c_cmd_line;  
  public:
-	BackgroundCommand(const char* cmd_line):BuiltInCommand(cmd_line){}
+	BackgroundCommand(const char* cmd_line):BuiltInCommand(cmd_line){c_cmd_line = cmd_line;}
 	~BackgroundCommand() {}
-	void execute() override { cout << "BGCommand executed" << endl; }
+	void execute() override ; 
 };
 
 class QuitCommand : public BuiltInCommand {

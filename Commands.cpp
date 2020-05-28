@@ -6,6 +6,7 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <iomanip>
+#include <stdexcept>
 #include "Commands.h"
 
 using namespace std;
@@ -184,11 +185,11 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     {
 		return new KillCommand(cmd_line);
 	}
-	else if(cmd_s.find("fg") == 0)	// needs to be changed
+	else if(args[0].compare("fg") == 0)	
     {
 		return new ForegroundCommand(cmd_line);
 	}
-	else if(cmd_s.find("bg") == 0)
+	else if(args[0].compare("bg") == 0)
     {
 		return new BackgroundCommand(cmd_line);
 	}
@@ -351,6 +352,67 @@ void KillCommand::execute()
 	}
 }
 
+
+
+
+void BackgroundCommand::execute(){
+	
+	vector<string> s_cmd;
+	split(c_cmd_line, s_cmd);
+	SmallShell& smash = SmallShell::getInstance();
+	JobsList* jobs_list = smash.GetJobList();
+	
+	jobs_list->removeFinishedJobs();
+	if(s_cmd.size()==1)
+	{
+		JobEntry* ptempJE = jobs_list->getLastStoppedJob();
+		if( ptempJE != nullptr){
+			cout<<ptempJE->sCommand<<":"<<ptempJE->PID<<endl;
+	        ptempJE->status = eJobStatus_Background;
+	        kill(ptempJE->PID,SIGCONT);
+	        jobs_list->LastStopped=-1;
+	        return;
+		}
+		else{
+			cout<<"smash error: bg: there is no stopped jobs to resume"<<endl;
+		    return;
+		}
+	}
+	else if (s_cmd.size()==2)
+	{
+		try{
+			stoi(s_cmd[1]);
+		}
+		catch(const std::invalid_argument& ia){
+			cerr<<"smash error: bg: invalid arguments"<<ia.what()<<endl;
+			return;
+		}
+	    JobEntry* ptempJE = jobs_list->getJobById(stoi(s_cmd[1]));
+	    if(jobs_list->m_pvJobs->size() < 1 || ptempJE == nullptr)   //empty list or no job with jobid
+	    {
+		    cout<<"smash error: bg: job-id "<<s_cmd[1]<<" does not exist"<<endl;
+	    }
+	    else if( ptempJE->status != eJobStatus_Stopped)
+	    {
+		    cout<<"smash error: bg: job-id "<<s_cmd[1]<<" is already running in the background"<<endl;
+	    }
+	    else{
+	        cout<<ptempJE->sCommand<<":"<<ptempJE->PID<<endl;
+	        ptempJE->status = eJobStatus_Background;
+	        jobs_list->LastStopped=-1;
+	        kill(ptempJE->PID,SIGCONT);
+	        return;
+	    }
+    }
+    else{
+		cout<<"smash error: bg: invalid arguments"<<endl;
+		return;
+	}
+}
+
+
+
+
 void ExternalCommand::execute(){
 	vector<string> s_cmd;
 	split(c_cmd_line, s_cmd);
@@ -427,8 +489,23 @@ void QuitCommand::execute()
 // if it was brought second time after fg command will be used 
 // relevant JobId from a_bForeground, a_bForeground=false and added to vector m_pvJobs' tail
 
+int JobsList::getLastJobId() {
+	int max = 0;
+    for (uint i=0 ; i < m_pvJobs->size() ; i++) 
+    {
+		JobEntry job = m_pvJobs->at(i);
+        if (job.nId > max)
+        {
+			max = job.nId;
+        }
+    }
+    return max;
+}
+
+
 void JobsList::addJob(string a_strCommand, int a_nPid, EJobStatus a_status)
 {
+	removeFinishedJobs();
 	int njobId;
 	if(m_pvJobs->size() == 0) 
 	{
@@ -441,6 +518,21 @@ void JobsList::addJob(string a_strCommand, int a_nPid, EJobStatus a_status)
 	JobEntry a_sJEtemp {.nId = njobId, .PID = a_nPid, .sCommand = a_strCommand, .status = a_status, .time_started = time(NULL) }; // change to new JobEntry(..) ?
 	m_pvJobs->push_back(a_sJEtemp);
 	//JobsList.maxJobId++; //buggy
+}
+
+
+void JobsList::addJob(JobEntry job)
+{
+	removeFinishedJobs();
+	if(job.nId != -1)	// was on the job list
+	{
+		m_pvJobs->push_back(job);
+	}
+	else  // first time on the job list
+	{
+		job.nId = getLastJobId() + 1;
+		m_pvJobs->push_back(job);
+	}
 }
 
 void JobsList::addJobToForeground(string a_strCommand, int a_nPid) //sets jobId to -1 since it was never on joblist
@@ -649,7 +741,12 @@ JobEntry* JobsList::getForegroundJob()
 
 JobEntry* JobsList::getLastStoppedJob()// LastStopped needs to be updated by handler
 {
-	return getJobById(LastStopped);
+	if (LastStopped < 0){
+	    return nullptr;
+	}
+	else{
+	    return getJobById(LastStopped);
+    }
 }
 // -----here functions of JobsList end-------
 
