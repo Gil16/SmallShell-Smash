@@ -36,27 +36,26 @@ class ExternalCommand : public Command {
 	~ExternalCommand() {}
 	void execute() override;
 };
-/*
+
 class PipeCommand : public Command {
   // TODO: Add your data members
  public:
-  PipeCommand(const char* cmd_line);
-  virtual ~PipeCommand() {}
-  void execute() override;
+	PipeCommand(const char* cmd_line);
+	virtual ~PipeCommand() {}
+	void execute() override;
 };
-*/
 
-/*
 class RedirectionCommand : public Command {
  // TODO: Add your data members
  public:
-  explicit RedirectionCommand(const char* cmd_line);
-  virtual ~RedirectionCommand() {}
-  void execute() override;
-  //void prepare() override;
-  //void cleanup() override;
+	const char* c_cmd_line;
+	explicit RedirectionCommand(const char* cmd_line):Command(cmd_line){c_cmd_line = cmd_line;}
+	virtual ~RedirectionCommand() {}
+	void execute() override;
+	//void prepare() override;
+	//void cleanup() override;
 };
-*/
+
 class ChangeDirCommand : public BuiltInCommand {
 // TODO: Add your data members public:
   public:
@@ -160,12 +159,11 @@ public:
 	JobEntry* getLastStoppedJob();
  // TODO: Add extra methods or modify exisitng ones as needed
 	vector<JobEntry>* m_pvJobs;
-	int LastStopped=-1; //-1 on initialization or when no last stopped
+	int LastStopped = -1; //-1 on initialization or when no last stopped
 private:
     // TODO: Add your data members
 	int getIndexById(int a_jobId); 
   //int maxJobId=0; // you don't need this, since the list is sorted
-	
 };
 
 //-----------------------JobsList Class ends here---------------------
@@ -193,19 +191,20 @@ class KillCommand : public BuiltInCommand {
 
 class ForegroundCommand : public BuiltInCommand {
  // TODO: Add your data members    
+	const char* c_cmd_line; 
  public:
-	ForegroundCommand(const char* cmd_line):BuiltInCommand(cmd_line){}
+	ForegroundCommand(const char* cmd_line):BuiltInCommand(cmd_line){ c_cmd_line = cmd_line; }
 	~ForegroundCommand() {}
-	void execute() override { cout << "FGCommand" << endl; }
+	void execute() override;
 };
 
 class BackgroundCommand : public BuiltInCommand {
- // TODO: Add your data members 
-    const char* c_cmd_line;  
+ // TODO: Add your data members   
+	const char* c_cmd_line; 
  public:
-	BackgroundCommand(const char* cmd_line):BuiltInCommand(cmd_line){c_cmd_line = cmd_line;}
+	BackgroundCommand(const char* cmd_line):BuiltInCommand(cmd_line){}
 	~BackgroundCommand() {}
-	void execute() override ; 
+	void execute() override;
 };
 
 class QuitCommand : public BuiltInCommand {
@@ -219,8 +218,13 @@ class QuitCommand : public BuiltInCommand {
 
 // TODO: should it really inhirit from BuiltInCommand ?
 class CopyCommand : public BuiltInCommand {
+	const char* c_cmd_line;
+	string old_file;
+	string new_file;
  public:
-	CopyCommand(const char* cmd_line):BuiltInCommand(cmd_line){}
+	CopyCommand(const char* cmd_line, string s_file1, string s_file2):BuiltInCommand(cmd_line){
+		c_cmd_line = cmd_line; old_file = s_file1; new_file = s_file2;
+	}
 	~CopyCommand(){};
 	void execute() override;
 };
@@ -242,7 +246,7 @@ class ChpromptCommand : public BuiltInCommand {
 class SmallShell {
  private:
 	string m_sPrompt = "smash>";
-	const string mc_sDefPrompt="smash>";
+	const string mc_sDefPrompt = "smash>";
 	string m_sLastWDir;
 	
 	SmallShell();

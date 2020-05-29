@@ -6,14 +6,20 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <iomanip>
-#include <stdexcept>
 #include "Commands.h"
+#include <sys/stat.h>
+#include <fcntl.h>
+
 
 using namespace std;
 
 JobEntry *SmallShell::m_pForeground;
 
 const std::string WHITESPACE = " \n\r\t\f\v";
+
+#define BUFFSIZE 8192
+
+/////////////////////
 
 #if 0
 #define FUNC_ENTRY()  \
@@ -146,10 +152,22 @@ JobsList* SmallShell::GetJobList()
 	return m_pJobsList;
 }
  
+
+static bool isRedirectionCommand(const string str) {
+    if (str.find('>') == string::npos)	// end of string
+    {
+        return false;
+    }
+    else
+    {
+        return (str[str.find('>')] == '>');
+	}
+}
+
 /*
 * Creates and returns a pointer to Command class which matches the given command line (cmd_line)
 */
-Command * SmallShell::CreateCommand(const char* cmd_line) {
+Command* SmallShell::CreateCommand(const char* cmd_line) {
 	string cmd_s = string(cmd_line);
 	vector<string> args;
 	split(cmd_s, args);
@@ -158,6 +176,10 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
         //error handling here
         return nullptr;
     }
+    if(isRedirectionCommand(cmd_s))
+    {
+		return new RedirectionCommand(cmd_line);
+	}
 	if (args[0].compare("chprompt") == 0)
 	//if no command issued split will issue chprompt command on her own
     {
@@ -185,7 +207,7 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
     {
 		return new KillCommand(cmd_line);
 	}
-	else if(args[0].compare("fg") == 0)	
+	else if(args[0].compare("fg") == 0)	// needs to be changed
     {
 		return new ForegroundCommand(cmd_line);
 	}
@@ -196,6 +218,17 @@ Command * SmallShell::CreateCommand(const char* cmd_line) {
 	else if(args[0].compare("quit") == 0)
     {
 		return new QuitCommand(cmd_line);
+	}
+	else if(args[0].compare("cp") == 0)
+	{
+		if(args.size() == 3)
+		{
+			return new CopyCommand(cmd_line, args[1], args[2]);
+		}
+		else 
+		{
+			cerr << "smash error: cp: invalid arguments" << endl;
+		}
 	}
 	else 
 	{
@@ -352,66 +385,120 @@ void KillCommand::execute()
 	}
 }
 
-
-
-
-void BackgroundCommand::execute(){
-	
+void ForegroundCommand::execute(){
 	vector<string> s_cmd;
 	split(c_cmd_line, s_cmd);
 	SmallShell& smash = SmallShell::getInstance();
 	JobsList* jobs_list = smash.GetJobList();
-	
 	jobs_list->removeFinishedJobs();
 	if(s_cmd.size()==1)
 	{
-		JobEntry* ptempJE = jobs_list->getLastStoppedJob();
-		if( ptempJE != nullptr){
-			cout<<ptempJE->sCommand<<":"<<ptempJE->PID<<endl;
-	        ptempJE->status = eJobStatus_Background;
-	        kill(ptempJE->PID,SIGCONT);
-	        jobs_list->LastStopped=-1;
+	    if(jobs_list->m_pvJobs->size() == 0)
+	    {
+		    cout << "smash error: fg: jobs list is empty" << endl;
+		    return;
+	    }
+	    JobEntry* ptempJE = jobs_list->getJobById (jobs_list->getLastJobId());
+	    SmallShell::m_pForeground = new JobEntry(ptempJE->nId, ptempJE->PID, ptempJE->sCommand, eJobStatus_Foreground, ptempJE->time_started);
+	    jobs_list->removeJobByPID(ptempJE->PID);
+	    cout << smash.m_pForeground->sCommand << ":" << smash.m_pForeground->PID << endl;
+	    kill(ptempJE->PID,SIGCONT);
+	    int status;
+	    waitpid(ptempJE->PID, &status, 0);
+	    return;
+	}
+	else if (s_cmd.size() == 2)
+	{
+	    try
+	    {
+		    stoi(s_cmd[1]);
+		}
+		catch(const std::invalid_argument& ia)
+		{
+			cerr << "smash error: fg: invalid arguments" << ia.what() << endl;
+			return;
+		}
+		JobEntry* ptempJE = jobs_list->getJobById(stoi(s_cmd[1]));
+		if(jobs_list->m_pvJobs->size() < 1 || ptempJE == nullptr)   //empty list or no job with jobid
+	    {
+		    cout << "smash error: bg: job-id " << s_cmd[1] << " does not exist" << endl;
+		    return;
+	    }
+	    else 
+	    {
+			SmallShell::m_pForeground = new JobEntry(ptempJE->nId, ptempJE->PID, ptempJE->sCommand, eJobStatus_Foreground, ptempJE->time_started);
+	        jobs_list->removeJobByPID(smash.m_pForeground->PID);
+	        cout << smash.m_pForeground->sCommand << ":" << smash.m_pForeground->PID << endl;
+	        kill(smash.m_pForeground->PID,SIGCONT);
+	        int status;
+	        waitpid(ptempJE->PID, &status, 0);
 	        return;
 		}
-		else{
-			cout<<"smash error: bg: there is no stopped jobs to resume"<<endl;
+	}
+	else
+	{
+		cout << "smash error: bg: invalid arguments" << endl;
+		return;
+	}
+}
+
+void BackgroundCommand::execute(){
+	vector<string> s_cmd;
+	split(c_cmd_line, s_cmd);
+	SmallShell& smash = SmallShell::getInstance();
+	JobsList* jobs_list = smash.GetJobList();
+	jobs_list->removeFinishedJobs();
+	if(s_cmd.size() == 1)
+	{
+		JobEntry* ptempJE = jobs_list->getLastStoppedJob();
+		if(ptempJE != nullptr){
+			cout << ptempJE->sCommand << ":" << ptempJE->PID << endl;
+	        ptempJE->status = eJobStatus_Background;
+	        kill(ptempJE->PID,SIGCONT);
+	        jobs_list->LastStopped = -1;
+	        return;
+		}
+		else
+		{
+			cout << "smash error: bg: there is no stopped jobs to resume" << endl;
 		    return;
 		}
 	}
-	else if (s_cmd.size()==2)
+	else if(s_cmd.size() == 2)
 	{
-		try{
+		try
+		{
 			stoi(s_cmd[1]);
 		}
-		catch(const std::invalid_argument& ia){
-			cerr<<"smash error: bg: invalid arguments"<<ia.what()<<endl;
+		catch(const std::invalid_argument& ia)
+		{
+			cerr << "smash error: bg: invalid arguments" << ia.what() << endl;
 			return;
 		}
 	    JobEntry* ptempJE = jobs_list->getJobById(stoi(s_cmd[1]));
 	    if(jobs_list->m_pvJobs->size() < 1 || ptempJE == nullptr)   //empty list or no job with jobid
 	    {
-		    cout<<"smash error: bg: job-id "<<s_cmd[1]<<" does not exist"<<endl;
+		    cout << "smash error: bg: job-id " << s_cmd[1] << " does not exist" << endl;
 	    }
 	    else if( ptempJE->status != eJobStatus_Stopped)
 	    {
-		    cout<<"smash error: bg: job-id "<<s_cmd[1]<<" is already running in the background"<<endl;
+		    cout << "smash error: bg: job-id " << s_cmd[1] << " is already running in the background" << endl;
 	    }
-	    else{
-	        cout<<ptempJE->sCommand<<":"<<ptempJE->PID<<endl;
+	    else
+	    {
+	        cout << ptempJE->sCommand << ":" << ptempJE->PID << endl;
 	        ptempJE->status = eJobStatus_Background;
-	        jobs_list->LastStopped=-1;
+	        jobs_list->LastStopped = -1;
 	        kill(ptempJE->PID,SIGCONT);
 	        return;
 	    }
     }
-    else{
-		cout<<"smash error: bg: invalid arguments"<<endl;
+    else
+    {
+		cout << "smash error: bg: invalid arguments" << endl;
 		return;
 	}
 }
-
-
-
 
 void ExternalCommand::execute(){
 	vector<string> s_cmd;
@@ -429,7 +516,7 @@ void ExternalCommand::execute(){
             temp_cmd[strlen(temp_cmd)-1] = '\0';
 			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL};
 			execv(args[0], args);
-			exit(EXIT_SUCCESS);
+			exit(0);
 		} 
 		else {
 			jobs_list->addJob(temp_cmd, pid, eJobStatus_Background);
@@ -442,11 +529,11 @@ void ExternalCommand::execute(){
 			setpgrp();
 			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL};
 			execv(args[0], args);
-			exit(EXIT_SUCCESS);
+			exit(0);
 		} else {
 			jobs_list->addJobToForeground(temp_cmd, pid);
 			int status;
-			waitpid(pid,&status,WUNTRACED);
+			waitpid(pid, &status, WUNTRACED);
 		}
 	}
 	delete [] temp_cmd;
@@ -482,6 +569,56 @@ void QuitCommand::execute()
 	exit(0);
 }
 
+void CopyCommand::execute()
+{
+	int fd_old = open(old_file.c_str(), O_RDONLY);
+    int fd_new = open(new_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644); // I want to change it, not the group/others 644
+    
+    if(fd_old == -1 || fd_new == -1)
+    {
+		cerr << "couldnt open files" << endl;
+		return;
+	}
+	char buf[BUFFSIZE];
+	while(true)
+	{
+		ssize_t c_r_count = read(fd_old, buf,BUFFSIZE);
+		if(c_r_count == 0) // EOF, finished reading
+		{
+			break;
+		}
+		else if(c_r_count == -1)
+		{
+			cerr << "couldnt read from old_file" << endl;
+			return;
+		}
+		
+		ssize_t c_w_count = write(fd_old, buf,BUFFSIZE);
+		if(c_w_count == -1)
+		{
+			cerr << "couldnt write to new_file" << endl;
+			return;
+		}
+	}
+	
+	int c_fd_old = close(fd_old);
+    int c_fd_new = close(fd_new);
+    if(c_fd_old == -1 || c_fd_new == -1)
+    {
+		cerr << "couldnt close files" << endl;
+		return;
+	}
+	cout << "smash: " << old_file << " was copied to " << new_file << endl;
+}
+
+void RedirectionCommand::execute()
+{
+	
+//	int res = open(name, O_CREAT | O_WRONLY, 0644 ); // (0)(user)(group)(others)
+//	if(res == -1) { cout << "couldn't open the file" << endl; } // failed
+
+}
+
 
 // a_nJobId=-1 ,a_bForeground=false in case job brought first time to list,and has no Jid assigned
 // a_nJobId>0, a_bForeground=true if fg command issued on job and job
@@ -502,7 +639,6 @@ int JobsList::getLastJobId() {
     return max;
 }
 
-
 void JobsList::addJob(string a_strCommand, int a_nPid, EJobStatus a_status)
 {
 	removeFinishedJobs();
@@ -520,7 +656,6 @@ void JobsList::addJob(string a_strCommand, int a_nPid, EJobStatus a_status)
 	//JobsList.maxJobId++; //buggy
 }
 
-
 void JobsList::addJob(JobEntry job)
 {
 	removeFinishedJobs();
@@ -535,14 +670,10 @@ void JobsList::addJob(JobEntry job)
 	}
 }
 
+
 void JobsList::addJobToForeground(string a_strCommand, int a_nPid) //sets jobId to -1 since it was never on joblist
 {
 	SmallShell::m_pForeground = new JobEntry(-1, a_nPid, a_strCommand, eJobStatus_Foreground, time(NULL));
-/*	smash.m_pForeground->nId = -1;
-	smash.m_pForeground->PID = a_nPid;
-	smash.m_pForeground->sCommand = a_strCommand;
-	smash.m_pForeground->status = eJobStatus_Foreground;
-	smash.m_pForeground->time_started = time(NULL) ;	*/
 }
 
 void JobsList::applyToAll(void (*a_pfun)(int))
@@ -556,17 +687,17 @@ void JobsList::applyToAll(void (*a_pfun)(int))
 	}
 }
 
-void JobsList::printJobsList ()  //To add to class list   ///Have no idea what are you trying to do here, just use aplly
+void JobsList::printJobsList()  //To add to class list   ///Have no idea what are you trying to do here, just use aplly
 {
 	
-	if(m_pvJobs->size()==0)
+	if(m_pvJobs->size() == 0)
 	{
-		cout<<"List is empty, nothing to print"<<endl;
+		cout << "List is empty, nothing to print" << endl;
 	}
 	else
 	{	
 		removeFinishedJobs();
-		for(uint j=0;j< m_pvJobs->size();j++)
+		for(uint j=0 ; j < m_pvJobs->size() ; j++)
 		{
 			updateJobstatusByPlace(j);
 			printJobByPlace(j);
@@ -585,7 +716,7 @@ void JobsList::printJobByPlace(int a_viJobs)
 	cout << elapsed_time << " secs";
 	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Stopped)
 	{
-		cout<<" (stopped)"<<endl;
+		cout << " (stopped)" << endl;
 	}
 	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Background)
 	{
@@ -646,12 +777,12 @@ bool JobsList::removeJobByPlace(int a_viJobs)
 	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Finished) // i think you should do poll here to check if the job is alive. Who updates the status?
 	{
 		m_pvJobs->erase(m_pvJobs->begin()+a_viJobs);
-		cout << "Found zombie job in node " << a_viJobs << " and erased!" << endl;
+		// cout << "Found zombie job in node " << a_viJobs << " and erased!" << endl;
 		return true;
 	}
 	else
 	{
-		cout << "Job in node " << a_viJobs << " is alive." << endl;
+		// cout << "Job in node " << a_viJobs << " is alive." << endl;
 		return false;
 	}
 }
