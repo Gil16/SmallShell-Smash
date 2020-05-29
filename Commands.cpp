@@ -180,8 +180,7 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
     {
 		return new RedirectionCommand(cmd_line);
 	}
-	if (args[0].compare("chprompt") == 0)
-	//if no command issued split will issue chprompt command on her own
+	if (args[0].compare("chprompt") == 0)	// bug!! chprompt& wont work and its fine, should ignore &
     {
 		return new ChpromptCommand(cmd_line);
 	}
@@ -221,7 +220,7 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 	}
 	else if(args[0].compare("cp") == 0)
 	{
-		if(args.size() == 3)
+		if(args.size() >= 3)
 		{
 			return new CopyCommand(cmd_line, args[1], args[2]);
 		}
@@ -391,7 +390,7 @@ void ForegroundCommand::execute(){
 	SmallShell& smash = SmallShell::getInstance();
 	JobsList* jobs_list = smash.GetJobList();
 	jobs_list->removeFinishedJobs();
-	if(s_cmd.size()==1)
+	if(s_cmd.size() == 1)
 	{
 	    if(jobs_list->m_pvJobs->size() == 0)
 	    {
@@ -576,36 +575,38 @@ void CopyCommand::execute()
     
     if(fd_old == -1 || fd_new == -1)
     {
-		cerr << "couldnt open files" << endl;
+		cerr << "smash error: open failed" <<  endl;
 		return;
 	}
 	char buf[BUFFSIZE];
-	while(true)
-	{
-		ssize_t c_r_count = read(fd_old, buf,BUFFSIZE);
-		if(c_r_count == 0) // EOF, finished reading
+	pid_t pid = fork();	 // should be added to the job list?
+	if (pid == 0) {
+		setpgrp();
+		while(true)
 		{
-			break;
+			ssize_t c_r_count = read(fd_old, buf,BUFFSIZE);
+			if(c_r_count == 0) // EOF, finished reading
+			{
+				break;
+			}
+			else if(c_r_count == -1)
+			{
+				cerr << "smash error: read failed" << endl;
+				return;
+			}
+			ssize_t c_w_count = write(fd_old, buf,BUFFSIZE);
+			if(c_w_count == -1)
+			{
+				cerr << "smash error: write failed" << endl;
+				return;
+			}
 		}
-		else if(c_r_count == -1)
-		{
-			cerr << "couldnt read from old_file" << endl;
-			return;
-		}
-		
-		ssize_t c_w_count = write(fd_old, buf,BUFFSIZE);
-		if(c_w_count == -1)
-		{
-			cerr << "couldnt write to new_file" << endl;
-			return;
-		}
-	}
-	
+	} 
 	int c_fd_old = close(fd_old);
     int c_fd_new = close(fd_new);
     if(c_fd_old == -1 || c_fd_new == -1)
     {
-		cerr << "couldnt close files" << endl;
+		cerr << "smash error: close failed" << endl;
 		return;
 	}
 	cout << "smash: " << old_file << " was copied to " << new_file << endl;
