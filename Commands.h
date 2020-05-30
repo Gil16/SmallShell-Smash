@@ -40,7 +40,8 @@ class ExternalCommand : public Command {
 class PipeCommand : public Command {
   // TODO: Add your data members
  public:
-	PipeCommand(const char* cmd_line);
+	const char* c_cmd_line;
+	PipeCommand(const char* cmd_line):Command(cmd_line){c_cmd_line = cmd_line;}
 	virtual ~PipeCommand() {}
 	void execute() override;
 };
@@ -245,13 +246,13 @@ class ChpromptCommand : public BuiltInCommand {
 
 class SmallShell {
  private:
-	string m_sPrompt = "smash>";
-	const string mc_sDefPrompt = "smash>";
+	string m_sPrompt = "smash> ";
+	const string mc_sDefPrompt = "smash> ";
 	string m_sLastWDir;
 	
 	SmallShell();
-    Command *CreateCommand(const char* cmd_line);
  public:
+	Command *CreateCommand(const char* cmd_line);
 	JobsList* m_pJobsList;
 	static JobEntry *m_pForeground;
 	SmallShell(SmallShell const&)      = delete; // disable copy ctor
