@@ -188,6 +188,12 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 	vector<string> args;
 	split(cmd_s, args);
 	
+	m_pJobsList->removeFinishedJobs();
+	for(uint j=0 ; j < m_pJobsList->m_pvJobs->size() ; j++)
+	{
+			m_pJobsList->updateJobstatusByPlace(j);
+	}
+	
 	bool is_bg_cmd = _isBackgroundComamnd(cmd_line);
 	char *no_us_cmd_line = new char[strlen(cmd_line)+1];	// no & cmd line
 	strcpy(no_us_cmd_line, cmd_line);	
@@ -276,6 +282,7 @@ void ChpromptCommand::execute()
 	{
        string cursor_Prompt = args[1];
        cursor_Prompt.push_back('>');
+       cursor_Prompt.push_back(' ');
 	   smash.SetPrompt(cursor_Prompt);
     }
     else
@@ -376,7 +383,7 @@ void ChangeDirCommand::execute()
 static bool checkIfStrIsNum(string str){
 	for(uint i=0 ; i <= str.size()-1 ; i++)
 	{
-		if(!(str[i] >= '0' || str[i] <= '9'))
+		if((str[i] < '0' || str[i] > '9') && str[i] != '-')
 		{
 			return false;
 		}
@@ -414,22 +421,22 @@ void KillCommand::execute()
 	}
 	uint jobSeqNum = stoi(args[2]);
 	uint sigNum = stoi(sigStr);
-	if(sigNum < 0 || sigNum > 31 || jobSeqNum < 1)
+	JobEntry* job = jobs_list->getJobById(jobSeqNum);
+	if(!job)
 	{
-		cerr << "smash error: kill: invalid arguments" << endl;
+		cerr << "smash error: kill: job-id " << args[2] << " does not exist" << endl;
 		return;
 	}
-	else
+	if(sigNum < 0 || sigNum > 31 || jobSeqNum < 1)
 	{
-		JobEntry* job = jobs_list->getJobById(jobSeqNum);
-		jobs_list->removeJobById(jobSeqNum);
-		{
-			cerr << "smash error: kill: job-id " << jobSeqNum << " does not exist" << endl;
-			return;
-		}
-		kill(job->PID, sigNum);
-		cout << "signal number " << sigNum << " was sent to pid " << job->PID << endl;
+		cerr << "smash error: kill failed: Invalid argument" << endl;
+		return;
 	}
+	kill(job->PID, sigNum);
+	if(sigNum == 9){
+		jobs_list->removeJobById(jobSeqNum);
+	}
+	cout << "signal number " << sigStr << " was sent to pid " << job->PID << endl;
 }
 
 void ForegroundCommand::execute(){
@@ -562,7 +569,10 @@ void ExternalCommand::execute(){
 			setpgrp();
             temp_cmd[strlen(temp_cmd)-1] = '\0';
 			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL};
-			execv(args[0], args);
+			if(execv(args[0], args) == -1)
+			{
+				cerr << "bash err" << endl;
+			}
 			exit(0);
 		} 
 		else {
@@ -575,7 +585,10 @@ void ExternalCommand::execute(){
 		if (pid == 0) {
 			setpgrp();
 			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL};
-			execv(args[0], args);
+			if(execv(args[0], args) == -1)
+			{
+				cerr << "bash err" << endl;
+			}
 			exit(0);
 		} else {
 			jobs_list->addJobToForeground(temp_cmd, pid);
@@ -658,7 +671,6 @@ void CopyCommand::execute()
 			return;
 		}
 		cout << "smash: " << old_file << " was copied to " << new_file << endl;
-		cout << "smash> ";
 		exit(0);
 	} 
 }
@@ -955,7 +967,7 @@ void JobsList::printJobsList()  //To add to class list   ///Have no idea what ar
 	
 	if(m_pvJobs->size() == 0)
 	{
-		cout << "List is empty, nothing to print" << endl;
+		//
 	}
 	else
 	{	
@@ -981,13 +993,13 @@ void JobsList::printJobByPlace(int a_viJobs)
 	{
 		cout << " (stopped)" << endl;
 	}
-	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Background)
+	else if(m_pvJobs->at(a_viJobs).status == eJobStatus_Background)
 	{
 		cout << endl;
 	}
-	else
+	else if(m_pvJobs->at(a_viJobs).status == eJobStatus_Finished)
 	{
-	//	cout << "something wrong:" << " status is-" << m_pvJobs->at(a_viJobs).status << endl; //debugging
+		// cout << endl;
 	}
 }
 
@@ -1032,7 +1044,6 @@ void JobsList::updateJobstatusByPID(EJobStatus a_nstatus, pid_t a_nPID)
              return;
 	        }
     }
-    cout << " Process to update is not found" << endl; //for debugging
 }
 
 bool JobsList::removeJobByPlace(int a_viJobs)
@@ -1040,12 +1051,10 @@ bool JobsList::removeJobByPlace(int a_viJobs)
 	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Finished) // i think you should do poll here to check if the job is alive. Who updates the status?
 	{
 		m_pvJobs->erase(m_pvJobs->begin()+a_viJobs);
-		// cout << "Found zombie job in node " << a_viJobs << " and erased!" << endl;
 		return true;
 	}
 	else
 	{
-		// cout << "Job in node " << a_viJobs << " is alive." << endl;
 		return false;
 	}
 }
@@ -1071,7 +1080,6 @@ JobEntry* JobsList::getJobById(int a_jobId)
     {
 		return &(m_pvJobs->at(i));
 	}
-	cout << "Job with JobId" << a_jobId << "is not found" << endl;
 	return NULL;
 }
 
@@ -1081,7 +1089,6 @@ void JobsList::removeJobById(int a_jobId)
     if (i >= 0)
     {
 		m_pvJobs->erase(m_pvJobs->begin()+i);
-	//	cout << "removed " << a_jobId << endl;
 //		if(m_pvJobs.size() == 0) 
 //           {maxJobId=JobsList.m_pForeground.JobId;} // it's a bug, just don't use maxJobId
 	}
