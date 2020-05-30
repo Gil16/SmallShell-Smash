@@ -187,6 +187,17 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 	string cmd_s = string(cmd_line);
 	vector<string> args;
 	split(cmd_s, args);
+	
+	bool is_bg_cmd = _isBackgroundComamnd(cmd_line);
+	char *no_us_cmd_line = new char[strlen(cmd_line)+1];	// no & cmd line
+	strcpy(no_us_cmd_line, cmd_line);	
+	if(is_bg_cmd)
+	{
+		_removeBackgroundSign(no_us_cmd_line);
+	}
+	vector<string> no_us_args;
+	split(no_us_cmd_line, no_us_args);
+	
     if (args.size() == 0)
     {
         //error handling here
@@ -200,31 +211,31 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
     {
 		return new RedirectionCommand(cmd_line);
 	}
-	if (args[0].compare("chprompt") == 0)	// bug!! chprompt& wont work and its fine, should ignore &
+	if (no_us_args[0].compare("chprompt") == 0)	// bug!! chprompt& wont work and its fine, should ignore &
     {
-		return new ChpromptCommand(cmd_line);
+		return new ChpromptCommand(no_us_cmd_line);
 	}
-	else if (args[0].compare("showpid") == 0)
+	else if (no_us_args[0].compare("showpid") == 0)
     {
-		return new ShowPidCommand(cmd_line);
+		return new ShowPidCommand(no_us_cmd_line);
 	}
-	else if (args[0].compare("pwd") == 0) 
+	else if (no_us_args[0].compare("pwd") == 0) 
     {
-		return new GetCurrDirCommand(cmd_line);
+		return new GetCurrDirCommand(no_us_cmd_line);
     }
-	else if (args[0].compare("cd") == 0)
+	else if (no_us_args[0].compare("cd") == 0)
     {
-		return new ChangeDirCommand(cmd_line);
+		return new ChangeDirCommand(no_us_cmd_line);
 	}
 //starting here still unimplemented commands, just for skeleton use
 //jobs in process- in lab.cpp edited before beeing put here and into header	
-	else if(args[0].compare("jobs") == 0)  //potential bug
+	else if(no_us_args[0].compare("jobs") == 0)  //potential bug
     {   
-		return new JobsCommand(cmd_line);
+		return new JobsCommand(no_us_cmd_line);
     }
-	else if(args[0].compare("kill") == 0)
+	else if(no_us_args[0].compare("kill") == 0)
     {
-		return new KillCommand(cmd_line);
+		return new KillCommand(no_us_cmd_line);
 	}
 	else if(args[0].compare("fg") == 0)	// needs to be changed
     {
@@ -291,29 +302,32 @@ void ChangeDirCommand::execute()
 	vector<string> args;
 	split (c_cmd_line, args);	
 	SmallShell& smash = SmallShell::getInstance();
-	if(args.size()==1)
+	if(args.size() == 1)
 	{
 		 cout << smash.GetPrompt(); 
 	}
-	else if(args.size()==2)
+	else if(args.size() == 2)
 	{
 		char* ca_CurrDir;
 	    ca_CurrDir = get_current_dir_name();
 	    if(args[1] == "-")
 	    {
 			string sdestDir = smash.GetLWD();
-			if(sdestDir.size() == 0) { cerr << "smash error: cd: OLDPWD not set" << endl; }
+			if(sdestDir.size() == 0) 
+			{ 
+				cerr << "smash error: cd: OLDPWD not set" << endl; 
+			}
 			else
 			{
 				chdir(sdestDir.c_str());
 				smash.SetLWD(string(ca_CurrDir));
 			}
 		}
-		else if(args[1]=="..")
+		else if(args[1] == "..")
 		{
 			string tempstr = string(ca_CurrDir);
 			size_t nLastSlash = tempstr.find_last_of("/");
-			string sdestDir = tempstr.substr(0,nLastSlash);
+			string sdestDir = tempstr.substr(0, nLastSlash);
 			cout << sdestDir << endl;
 			chdir(sdestDir.c_str());
 			smash.SetLWD(string(ca_CurrDir));
@@ -325,16 +339,30 @@ void ChangeDirCommand::execute()
 			if(nFirstSlash == 0)
 			{
 				string tempstr = args[1];
-				chdir(tempstr.c_str());
-				smash.SetLWD(string(ca_CurrDir));
+				int res = chdir(tempstr.c_str());	// need to check if tempstr exists
+				if(res == -1)
+				{
+					cerr << "smash error: chdir failed: No such file or directory" << endl;
+				} 
+				else
+				{
+					smash.SetLWD(string(ca_CurrDir));	// must
+				}
 			}
 			//relative path
 			else
 			{
-				string tempstr1 = args[1].insert(0,"/");
-				string tempstr2 = tempstr1.insert(0,ca_CurrDir);
-				chdir(tempstr2.c_str());
-				smash.SetLWD(string(ca_CurrDir));
+				string tempstr1 = args[1].insert(0, "/");
+				string tempstr2 = tempstr1.insert(0, ca_CurrDir);
+				int res = chdir(tempstr2.c_str()); // need to check if tempstr1/2 exists
+				if(res == -1)
+				{
+					cerr << "smash error: chdir failed: No such file or directory" << endl;
+				}
+				else
+				{
+					smash.SetLWD(string(ca_CurrDir));	// must 
+				}
 			}
 		}
 		
@@ -651,7 +679,7 @@ void RedirectionCommand::execute()
 	split(c_cmd_line, s_cmd);
 	SmallShell& smash = SmallShell::getInstance();
 
-	char* temp_cmd = new char[strlen(c_cmd_line)+1];
+	char *temp_cmd = new char[strlen(c_cmd_line)+1];
 	strcpy(temp_cmd, c_cmd_line);	
 	char *token;
 	int resROA = redirectOrAppend(s_cmd);
@@ -706,16 +734,13 @@ void RedirectionCommand::execute()
 	{
 		cerr << "smash error: close failed" << endl;
 	}
-//	
 }
-
 
 void PipeCommand::execute()
 {
 	vector<string> s_cmd;
 	split(c_cmd_line, s_cmd);
 	SmallShell& smash = SmallShell::getInstance();
-	
 	int pl[2];
 	pipe(pl);
 
@@ -723,6 +748,10 @@ void PipeCommand::execute()
 	size_t pos_sec_com = s_temp_cmd.find_first_of("|");
 	string s_tempcom1 = s_temp_cmd.substr(0, pos_sec_com);
 	string s_tempcom2 = s_temp_cmd.substr(pos_sec_com+1, s_temp_cmd.size()+1);
+	
+	auto cmd1 = smash.CreateCommand(s_tempcom1.c_str());
+	auto cmd2 = smash.CreateCommand(s_tempcom2.c_str());
+	
 	if(s_tempcom2.find_first_of("&") == 0 ) {
 		s_tempcom2.erase(0,1);
 	}
@@ -733,65 +762,60 @@ void PipeCommand::execute()
 		if(pid == 0)	// son
 		{
 			setpgrp();
-			int stdin_copy = dup(0);
-			int stdout_copy = dup(1);
-			auto cmd1 = smash.CreateCommand(s_tempcom1.c_str());
-			if(close(pl[0]) == -1)
-			{
-				cerr << "smash error: close failed" << endl;
-			}
-			if(dup2(pl[1], 1) == -1)
-			{
-				cerr << "smash error: dup2 failed" << endl;
-			}
-			cmd1->execute();
-			if(dup2(stdin_copy, 0) == -1)
-			{
-				cerr << "smash error: dup2 failed" << endl;
-			}
-			if(dup2(stdout_copy, 1) == -1)
-			{
-				cerr << "smash error: dup2 failed" << endl;
-			}
-			if(close(stdin_copy) == -1)
-			{
-				cerr << "smash error: close failed" << endl;
-			}
-			if(close(stdout_copy) == -1)
-			{
-				cerr << "smash error: close failed" << endl;
-			}
-		}
-		else // parent
-		{
-			int stdin_copy = dup(0);
-			int stdout_copy = dup(1);
-			auto cmd2 = smash.CreateCommand(s_tempcom2.c_str());
 			if(close(pl[1]) == -1)
 			{
 				cerr << "smash error: close failed" << endl;
 			}
-			if(dup2(pl[0], 0) == -1)
+			int stdin_copy = dup(0);
+			if(stdin_copy == -1)
+			{
+				cerr << "smash error: dup failed" << endl;
+			}
+			if(dup2(pl[0], 0) == -1) 
 			{
 				cerr << "smash error: dup2 failed" << endl;
 			}
-			cmd2->execute();		
-			if(dup2(stdin_copy, 0) == -1)
-			{
-				cerr << "smash error: dup2 failed" << endl;
-			}
-			if(dup2(stdout_copy, 1) == -1)
-			{
-				cerr << "smash error: dup2 failed" << endl;
-			}
-			if(close(stdin_copy) == -1)
+			cmd2->execute();	 
+			if(close(pl[0]) == -1) 
 			{
 				cerr << "smash error: close failed" << endl;
 			}
-			if(close(stdout_copy) == -1)
+			if(close(stdin_copy) == -1) 
 			{
 				cerr << "smash error: close failed" << endl;
 			}
+			exit(0);
+		}
+		else // parent
+		{
+			if(close(pl[0]) == -1) 
+			{
+				cerr << "smash error: close failed" << endl;
+			}
+			int stdout_copy = dup(1); 
+			if(stdout_copy == 1)
+			{
+				cerr << "smash error: dup failed" << endl;
+			}
+			if(dup2(pl[1], 1) == -1) 
+			{
+				cerr << "smash error: dup2 failed" << endl;
+			}
+			if(close(pl[1]) == -1) 
+			{
+				cerr << "smash error: close failed" << endl;
+			}
+			cmd1->execute();  
+			if(dup2(stdout_copy, 1) == -1) 
+			{
+				cerr << "smash error: dup2 failed" << endl;
+			}
+			if(close(stdout_copy) == -1) 
+			{
+				cerr << "smash error: close failed" << endl;
+			}
+			int status;
+			waitpid(pid, &status, WUNTRACED);
 		}
 	}
 	else if(isPipeSign(s_cmd) == 1)
@@ -800,65 +824,60 @@ void PipeCommand::execute()
 		if(pid == 0)	// son
 		{
 			setpgrp();
-			int stdin_copy = dup(0);
-			int stderr_copy = dup(2);
-			auto cmd1 = smash.CreateCommand(s_tempcom1.c_str());
+			if(close(pl[1]) == -1) 
+			{
+				cerr << "smash error: close failed" << endl;
+			}
+			int stdin_copy = dup(0); 
+			if(stdin_copy == -1) 
+			{
+				cerr << "smash error: dup failed" << endl;
+			}
+			if(dup2(pl[0], 0) == -1) 
+			{
+				cerr << "smash error: dup2 failed" << endl;
+			}
+			cmd2->execute();	 
+			if(close(pl[0]) == -1) 
+			{
+				cerr << "smash error: close failed" << endl;
+			}
+			if(close(stdin_copy) == -1)
+			{
+				cerr << "smash error: close failed" << endl;
+			}
+			exit(0);
+		}
+		else // parent
+		{
 			if(close(pl[0]) == -1)
 			{
 				cerr << "smash error: close failed" << endl;
+			}
+			int stderr_copy = dup(2);
+			if(stderr_copy == -1)
+			{
+				cerr << "smash error: dup failed" << endl;
 			}
 			if(dup2(pl[1], 2) == -1)
 			{
 				cerr << "smash error: dup2 failed" << endl;
 			}
+			if(close(pl[1]) == -1) 
+			{
+				cerr << "smash error: close failed" << endl;
+			}
 			cmd1->execute();
-			if(dup2(stdin_copy, 0) == -1)
-			{
-				cerr << "smash error: dup2 failed" << endl;
-			}
 			if(dup2(stderr_copy, 2) == -1)
 			{
 				cerr << "smash error: dup2 failed" << endl;
-			}
-			if(close(stdin_copy) == -1)
-			{
-				cerr << "smash error: close failed" << endl;
 			}
 			if(close(stderr_copy) == -1)
 			{
 				cerr << "smash error: close failed" << endl;
 			}
-		}
-		else // parent
-		{
-			int stdin_copy = dup(0);
-			int stderr_copy = dup(2);
-			auto cmd2 = smash.CreateCommand(s_tempcom2.c_str());
-			if(close(pl[1]) == -1)
-			{
-				cerr << "smash error: close failed" << endl;
-			}
-			if(dup2(pl[0], 0) == -1)
-			{
-				cerr << "smash error: dup2 failed" << endl;
-			}
-			cmd2->execute();		
-			if(dup2(stdin_copy, 0) == -1)
-			{
-				cerr << "smash error: dup2 failed" << endl;
-			}
-			if(dup2(stderr_copy, 2) == -1)
-			{
-				cerr << "smash error: dup2 failed" << endl;
-			}
-			if(close(stdin_copy) == -1)
-			{
-				cerr << "smash error: close failed" << endl;
-			}
-			if(close(stderr_copy) == -1)
-			{
-				cerr << "smash error: close failed" << endl;
-			}
+			int status;
+			waitpid(pid, &status, WUNTRACED);
 		}
 	}
 }
@@ -954,7 +973,7 @@ void JobsList::printJobByPlace(int a_viJobs)
 {
 	cout << "[" << m_pvJobs->at(a_viJobs).nId << "] ";
 	cout << m_pvJobs->at(a_viJobs).sCommand;
-	cout << ": " << m_pvJobs->at(a_viJobs).PID << " ";
+	cout << " : " << m_pvJobs->at(a_viJobs).PID << " ";
 	time_t tactual_time = time(NULL);
 	double elapsed_time = difftime(tactual_time,m_pvJobs->at(a_viJobs).time_started);
 	cout << elapsed_time << " secs";
