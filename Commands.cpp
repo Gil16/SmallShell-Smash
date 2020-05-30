@@ -166,6 +166,11 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 	vector<string> args;
 	split(cmd_s, args);
 	size_t pos_pipe_com = cmd_s.find_first_of("|");
+	m_pJobsList->removeFinishedJobs();
+	for(uint j=0 ; j < m_pJobsList->m_pvJobs->size() ; j++)
+	{
+			m_pJobsList->updateJobstatusByPlace(j);
+	}
 	
 	bool is_bg_cmd = _isBackgroundComamnd(cmd_line);
 	char *no_us_cmd_line = new char[strlen(cmd_line)+1];	// no & cmd line
@@ -183,7 +188,7 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
         return nullptr;
     }
     if(pos_pipe_com != string::npos)
-    {	
+    {
 		return new PipeCommand(cmd_line);
 	}
     if(isRedirectionCommand(cmd_s))
@@ -249,9 +254,9 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 void ChpromptCommand::execute()
 {
 	vector<string> args;
-	split (c_cmd_line, args);	
+	split(c_cmd_line, args);
 	SmallShell& smash = SmallShell::getInstance();
-	if (args.size() > 1)
+	if (args.size() > 1)	// need to check args.size() == 1
 	{
        string cursor_Prompt = args[1];
        cursor_Prompt.push_back('>');
@@ -356,7 +361,7 @@ void ChangeDirCommand::execute()
 static bool checkIfStrIsNum(string str){
 	for(uint i=0 ; i <= str.size()-1 ; i++)
 	{
-		if(!(str[i] >= '0' || str[i] <= '9'))
+		if((str[i] < '0' || str[i] > '9') && str[i] != '-')
 		{
 			return false;
 		}
@@ -394,25 +399,23 @@ void KillCommand::execute()
 	}
 	uint jobSeqNum = stoi(args[2]);
 	uint sigNum = stoi(sigStr);
-	if(sigNum < 0 || sigNum > 31 || jobSeqNum < 1)
+	JobEntry* job = jobs_list->getJobById(jobSeqNum);
+	if(!job)
 	{
-		cerr << "smash error: kill: invalid arguments" << endl;
+		cerr << "smash error: kill: job-id " << args[2] << " does not exist" << endl;
 		return;
 	}
-	else
+	if(sigNum < 0 || sigNum > 31 || jobSeqNum < 1)
 	{
-		JobEntry* job = jobs_list->getJobById(jobSeqNum);
-		jobs_list->removeJobById(jobSeqNum);
-		{
-			cerr << "smash error: kill: job-id " << jobSeqNum << " does not exist" << endl;
-			return;
-		}
-		kill(job->PID, sigNum);
-        if(sigNum == 9){
-			jobs_list->removeJobById(jobSeqNum);
-		}
-		cout << "signal number " << sigNum << " was sent to pid " << job->PID << endl;
+		cerr << "smash error: kill failed: Invalid argument" << endl;
+		return;
 	}
+	kill(job->PID, sigNum);
+	if(sigNum == 9)
+    {
+		jobs_list->removeJobById(jobSeqNum);
+	}
+	cout << "signal number " << sigStr << " was sent to pid " << job->PID << endl;
 }
 
 void ForegroundCommand::execute(){
@@ -428,13 +431,18 @@ void ForegroundCommand::execute(){
 		    cout << "smash error: fg: jobs list is empty" << endl;
 		    return;
 	    }
-	    JobEntry* ptempJE = jobs_list->getJobById (jobs_list->getLastJobId());
-	    SmallShell::m_pForeground = new JobEntry(ptempJE->nId, ptempJE->PID, ptempJE->sCommand, eJobStatus_Foreground, ptempJE->time_started);
-	    jobs_list->removeJobByPID(ptempJE->PID);
-	    cout << smash.m_pForeground->sCommand << ":" << smash.m_pForeground->PID << endl;
+	    JobEntry* ptempJE = jobs_list->getJobById(jobs_list->getLastJobId());
 	    kill(ptempJE->PID,SIGCONT);
+	    jobs_list->removeJobByPID(ptempJE->PID);
+	    
+	    delete SmallShell::m_pForeground;
+	    SmallShell::m_pForeground = ptempJE;
+	    
+	//    SmallShell::m_pForeground = new JobEntry(ptempJE->nId, ptempJE->PID, ptempJE->sCommand, eJobStatus_Foreground, ptempJE->time_started);
+	    cout << smash.m_pForeground->sCommand << " : " << smash.m_pForeground->PID << endl;
+	    
 	    int status;
-	    waitpid(ptempJE->PID, &status, 0);
+	    waitpid(ptempJE->PID, &status, WUNTRACED);
 	    return;
 	}
 	else if (s_cmd.size() == 2)
@@ -457,17 +465,21 @@ void ForegroundCommand::execute(){
 	    else 
 	    {
 			SmallShell::m_pForeground = new JobEntry(ptempJE->nId, ptempJE->PID, ptempJE->sCommand, eJobStatus_Foreground, ptempJE->time_started);
-	        jobs_list->removeJobByPID(smash.m_pForeground->PID);
-	        cout << smash.m_pForeground->sCommand << ":" << smash.m_pForeground->PID << endl;
 	        kill(smash.m_pForeground->PID,SIGCONT);
+	        jobs_list->removeJobByPID(smash.m_pForeground->PID);
+	        cout << smash.m_pForeground->sCommand << " : " << smash.m_pForeground->PID << endl;
+	        
+	        delete SmallShell::m_pForeground;
+			SmallShell::m_pForeground = ptempJE;
+	        
 	        int status;
-	        waitpid(ptempJE->PID, &status, 0);
+	        waitpid(ptempJE->PID, &status, WUNTRACED);
 	        return;
 		}
 	}
 	else
 	{
-		cout << "smash error: bg: invalid arguments" << endl;
+		cout << "smash error: fg: invalid arguments" << endl;
 		return;
 	}
 }
@@ -482,9 +494,9 @@ void BackgroundCommand::execute(){
 	{
 		JobEntry* ptempJE = jobs_list->getLastStoppedJob();
 		if(ptempJE != nullptr){
-			cout << ptempJE->sCommand << ":" << ptempJE->PID << endl;
-	        ptempJE->status = eJobStatus_Background;
+			cout << ptempJE->sCommand << " : " << ptempJE->PID << endl;
 	        kill(ptempJE->PID,SIGCONT);
+	        ptempJE->status = eJobStatus_Background;
 	        jobs_list->LastStopped = -1;
 	        return;
 		}
@@ -516,7 +528,7 @@ void BackgroundCommand::execute(){
 	    }
 	    else
 	    {
-	        cout << ptempJE->sCommand << ":" << ptempJE->PID << endl;
+	        cout << ptempJE->sCommand << " : " << ptempJE->PID << endl;
 	        ptempJE->status = eJobStatus_Background;
 	        jobs_list->LastStopped = -1;
 	        kill(ptempJE->PID,SIGCONT);
@@ -599,7 +611,7 @@ void QuitCommand::execute()
 	
 	if(s_cmd.size() > 1 && s_cmd[1] == "kill")
 	{
-		// remove finished jobs
+		jobs_list->removeFinishedJobs();
 		jobs_list->killAllJobs();  // kill all unfinished jobs
 	}
 	exit(0);
@@ -647,7 +659,6 @@ void CopyCommand::execute()
 			return;
 		}
 		cout << "smash: " << old_file << " was copied to " << new_file << endl;
-		cout << "smash> ";
 		exit(0);
 	} 
 }
@@ -656,9 +667,8 @@ int redirectOrAppend(vector<string> vcmd)
 {
 	if( vcmd[vcmd.size()-2] == ">" )
 	{ 
-    	cout << vcmd.size() << " -word is: " << vcmd[vcmd.size()-2] << endl; 
-        return 0 ; 
-    }		
+		return 0;
+	}	
 	else if(vcmd[vcmd.size()-2] == ">>")
 		return 1;
 	else 
@@ -681,7 +691,7 @@ void RedirectionCommand::execute()
 	string s_tempcom2 = s_temp_cmd.substr(pos_sec_com+1, s_temp_cmd.size()+1);
 	int resROA = 0;  // case of redirection
 	
-	if(s_tempcom2.find_first_of(">") == 0) 
+	if(s_tempcom2.find_first_of(">") == 0)
     {
 		s_tempcom2.erase(0,1);
 		resROA = 1;  // case of append
@@ -910,11 +920,10 @@ void JobsList::addJob(string a_strCommand, int a_nPid, EJobStatus a_status)
 	}
 	else
 	{
-		njobId = (m_pvJobs->back().nId)+1;
+		njobId = (m_pvJobs->back().nId) + 1;
 	}
 	JobEntry a_sJEtemp {.nId = njobId, .PID = a_nPid, .sCommand = a_strCommand, .status = a_status, .time_started = time(NULL) }; // change to new JobEntry(..) ?
 	m_pvJobs->push_back(a_sJEtemp);
-	//JobsList.maxJobId++; //buggy
 }
 
 void JobsList::addJob(JobEntry job)
@@ -953,7 +962,7 @@ void JobsList::printJobsList()  //To add to class list   ///Have no idea what ar
 	
 	if(m_pvJobs->size() == 0)
 	{
-		cout << "List is empty, nothing to print" << endl;
+		//
 	}
 	else
 	{	
@@ -1065,6 +1074,18 @@ JobEntry* JobsList::getJobById(int a_jobId)
 	return NULL;
 }
 
+JobEntry* JobsList::getJobByPID(int pid)
+{
+	for(uint i=0 ; i < m_pvJobs->size() ; i++)
+	{
+		if(m_pvJobs->at(i).PID == pid)
+		{
+			return &(m_pvJobs->at(i));
+		}
+	}
+	return NULL;
+}
+
 void JobsList::removeJobById(int a_jobId)
 {
     int i = getIndexById(a_jobId);
@@ -1125,7 +1146,8 @@ JobEntry* JobsList::getLastStoppedJob()// LastStopped needs to be updated by han
 	if (LastStopped < 0){
 	    return nullptr;
 	}
-	else{
+	else
+	{
 	    return getJobById(LastStopped);
     }
 }

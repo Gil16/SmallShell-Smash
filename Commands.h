@@ -151,6 +151,7 @@ public:
 	void updateJobstatusByPlace(int a_viJobs);
 	void updateJobstatusByPID(EJobStatus a_nstatus,pid_t a_nPID);
 	JobEntry* getJobById(int a_jobId);// if job is not in list returns NULL
+	JobEntry* getJobByPID(int pid);
 	void removeJobById(int a_jobId);
 	void removeJobByPID(int pid);
 	void killAllJobs();
@@ -203,7 +204,7 @@ class BackgroundCommand : public BuiltInCommand {
  // TODO: Add your data members   
 	const char* c_cmd_line; 
  public:
-	BackgroundCommand(const char* cmd_line):BuiltInCommand(cmd_line){}
+	BackgroundCommand(const char* cmd_line):BuiltInCommand(cmd_line){ c_cmd_line = cmd_line; }
 	~BackgroundCommand() {}
 	void execute() override;
 };
@@ -252,9 +253,9 @@ class SmallShell {
 	
 	SmallShell();
  public:
-	Command *CreateCommand(const char* cmd_line);
 	JobsList* m_pJobsList;
 	static JobEntry *m_pForeground;
+	Command *CreateCommand(const char* cmd_line);
 	SmallShell(SmallShell const&)      = delete; // disable copy ctor
 	void operator=(SmallShell const&)  = delete; // disable = operator
 	static SmallShell& getInstance() // make SmallShell singleton
