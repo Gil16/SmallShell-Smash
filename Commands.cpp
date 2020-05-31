@@ -77,7 +77,7 @@ void split(const string& str, vector<string>& a_vOut)
     } 
     else
 	{
-		a_vOut.push_back("chprompt");
+		a_vOut.push_back("\n");
 	}
 }
 
@@ -134,6 +134,7 @@ SmallShell::SmallShell()
 {
 	m_pJobsList = new JobsList();
 	m_pForeground = nullptr;
+	smash_pid = getpid();
     SetPrompt("");
 }
 
@@ -156,6 +157,22 @@ JobsList* SmallShell::GetJobList()
 static bool isRedirectionCommand(const string str) 
 {
      return str.find('>') != string::npos;
+}
+
+int isPipeSign(vector<string> vcmd)
+{
+	for(uint i=0 ; i < vcmd.size() ; i++)
+	{
+		if(vcmd[i].compare("|") == 0)
+		{
+			return 0;
+		}
+		else if(vcmd[i].compare("|&") == 0)
+		{
+			return 1;
+		}
+	}
+	return -1;
 }
 
 /*
@@ -271,7 +288,8 @@ void ChpromptCommand::execute()
 
 void ShowPidCommand::execute()
 {
-	cout << "smash pid is " << getpid() << endl;
+	SmallShell& smash = SmallShell::getInstance();
+	cout << "smash pid is " << smash.smash_pid << endl;
 }
 
 void GetCurrDirCommand::execute ()
@@ -388,13 +406,13 @@ void KillCommand::execute()
 	JobsList* jobs_list = smash.GetJobList();
 	if(args.size() != 3 || args[1].substr(0,1) != "-")
 	{
-		cerr << "smash error: kill: invalid arguments" << endl;
+		cout << "smash error: kill: invalid arguments" << endl;
 		return;
 	}
 	string sigStr = args[1].substr(1, args[1].size());
 	if(!checkIfStrIsNum(sigStr) || !checkIfStrIsNum(args[2]))
 	{
-		cerr << "smash error: kill: invalid arguments" << endl;
+		cout << "smash error: kill: invalid arguments" << endl;
 		return;
 	}
 	uint jobSeqNum = stoi(args[2]);
@@ -402,12 +420,12 @@ void KillCommand::execute()
 	JobEntry* job = jobs_list->getJobById(jobSeqNum);
 	if(!job)
 	{
-		cerr << "smash error: kill: job-id " << args[2] << " does not exist" << endl;
+		cout << "smash error: kill: job-id " << args[2] << " does not exist" << endl;
 		return;
 	}
 	if(sigNum < 0 || sigNum > 31 || jobSeqNum < 1)
 	{
-		cerr << "smash error: kill failed: Invalid argument" << endl;
+		cout << "smash error: kill failed: Invalid argument" << endl;
 		return;
 	}
 	kill(job->PID, sigNum);
@@ -431,18 +449,14 @@ void ForegroundCommand::execute(){
 		    cout << "smash error: fg: jobs list is empty" << endl;
 		    return;
 	    }
-	    JobEntry* ptempJE = jobs_list->getJobById(jobs_list->getLastJobId());
-	    kill(ptempJE->PID,SIGCONT);
+		JobEntry* ptempJE = jobs_list->getJobById (jobs_list->getLastJobId());
+	    SmallShell::m_pForeground = new JobEntry(ptempJE->nId, ptempJE->PID, ptempJE->sCommand, eJobStatus_Foreground, ptempJE->time_started);
 	    jobs_list->removeJobByPID(ptempJE->PID);
-	    
-	    delete SmallShell::m_pForeground;
-	    SmallShell::m_pForeground = ptempJE;
-	    
-	//    SmallShell::m_pForeground = new JobEntry(ptempJE->nId, ptempJE->PID, ptempJE->sCommand, eJobStatus_Foreground, ptempJE->time_started);
 	    cout << smash.m_pForeground->sCommand << " : " << smash.m_pForeground->PID << endl;
-	    
+	    kill(ptempJE->PID,SIGCONT);
 	    int status;
 	    waitpid(ptempJE->PID, &status, WUNTRACED);
+	    smash.m_pForeground = nullptr;
 	    return;
 	}
 	else if (s_cmd.size() == 2)
@@ -453,7 +467,7 @@ void ForegroundCommand::execute(){
 		}
 		catch(const std::invalid_argument& ia)
 		{
-			cerr << "smash error: fg: invalid arguments" << ia.what() << endl;
+			cerr << "smash error: fg: invalid arguments" << endl;
 			return;
 		}
 		JobEntry* ptempJE = jobs_list->getJobById(stoi(s_cmd[1]));
@@ -465,15 +479,12 @@ void ForegroundCommand::execute(){
 	    else 
 	    {
 			SmallShell::m_pForeground = new JobEntry(ptempJE->nId, ptempJE->PID, ptempJE->sCommand, eJobStatus_Foreground, ptempJE->time_started);
-	        kill(smash.m_pForeground->PID,SIGCONT);
 	        jobs_list->removeJobByPID(smash.m_pForeground->PID);
 	        cout << smash.m_pForeground->sCommand << " : " << smash.m_pForeground->PID << endl;
-	        
-	        delete SmallShell::m_pForeground;
-			SmallShell::m_pForeground = ptempJE;
-	        
+	        kill(smash.m_pForeground->PID,SIGCONT);
 	        int status;
 	        waitpid(ptempJE->PID, &status, WUNTRACED);
+	        smash.m_pForeground = nullptr;
 	        return;
 		}
 	}
@@ -582,6 +593,7 @@ void ExternalCommand::execute(){
 			jobs_list->addJobToForeground(temp_cmd, pid);
 			int status;
 			waitpid(pid, &status, WUNTRACED);
+			smash.m_pForeground = nullptr;
 		}
 	}
 	delete [] temp_cmd;
@@ -660,7 +672,7 @@ void CopyCommand::execute()
 		}
 		cout << "smash: " << old_file << " was copied to " << new_file << endl;
 		exit(0);
-	} 
+	}
 }
 
 int redirectOrAppend(vector<string> vcmd)
@@ -997,7 +1009,7 @@ void JobsList::printJobByPlace(int a_viJobs)
 void JobsList::updateJobstatusByPlace(int a_viJobs)
 {
 	int wstatus;
-	pid_t w = waitpid(m_pvJobs->at(a_viJobs).PID, &wstatus, WNOHANG);
+	pid_t w = waitpid(m_pvJobs->at(a_viJobs).PID, &wstatus, WNOHANG | WUNTRACED);
     if(w == -1) 
     {
          perror("waitpid");
@@ -1166,4 +1178,3 @@ void SmallShell::executeCommand(const char *cmd_line) {
 	}
   // Please note that you must fork smash process for some commands (e.g., external commands....)
 }
-

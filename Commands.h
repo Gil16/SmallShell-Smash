@@ -254,6 +254,7 @@ class SmallShell {
 	SmallShell();
  public:
 	JobsList* m_pJobsList;
+	pid_t smash_pid;
 	static JobEntry *m_pForeground;
 	Command *CreateCommand(const char* cmd_line);
 	SmallShell(SmallShell const&)      = delete; // disable copy ctor

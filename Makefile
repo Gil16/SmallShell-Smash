@@ -3,10 +3,13 @@ COMPILER_FLAGS := --std=c++11 -Wall
 SRCS := Commands.cpp signals.cpp smash.cpp
 OBJS=$(subst .cpp,.o,$(SRCS))
 HDRS := Commands.h signals.h
-PROG_BIN := prog
+SMASH_BIN := smash
 
-$(PROG_BIN): $(OBJS)
+$(SMASH_BIN): $(OBJS)
 	$(COMPILER) $(COMPILER_FLAGS) $^ -o $@
 
 $(OBJS): %.o: %.cpp
 	$(COMPILER) $(COMPILER_FLAGS) -c $^
+
+clean:
+	rm -rf $(SMASH_BIN) $(OBJS) $(TESTS_OUTPUTS) 
