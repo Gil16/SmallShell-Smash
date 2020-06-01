@@ -6,129 +6,18 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <iomanip>
-#include "Commands.h"
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "Commands.h"
+#include "Utilities.h"
 
 using namespace std;
 
-JobEntry *SmallShell::m_pForeground;
-
-const std::string WHITESPACE = " \n\r\t\f\v";
-
 #define BUFFSIZE 8192
 
-/////////////////////
+JobEntry *SmallShell::m_pForeground;
 
-#if 0
-#define FUNC_ENTRY()  \
-  cerr << __PRETTY_FUNCTION__ << " --> " << endl;
-
-#define FUNC_EXIT()  \
-  cerr << __PRETTY_FUNCTION__ << " <-- " << endl;
-#else
-#define FUNC_ENTRY()
-#define FUNC_EXIT()
-#endif
-
-#define DEBUG_PRINT cerr << "DEBUG: "
-
-#define EXEC(path, arg) \
-  execvp((path), (arg));
-//unused
-string _ltrim(const std::string& s)  // 1st part of parse
-{
-  size_t start = s.find_first_not_of(WHITESPACE);
-  return (start == std::string::npos) ? "" : s.substr(start);
-}
-//unused
-string _rtrim(const std::string& s)
-{
-  size_t end = s.find_last_not_of(WHITESPACE);
-  return (end == std::string::npos) ? "" : s.substr(0, end + 1);
-}
-
-string _trim(const std::string& s)
-{
-  return _rtrim(_ltrim(s));
-}
-// used instead of Parse
-void split(const string& str, vector<string>& a_vOut)
-{
-    size_t nBeginWord = str.find_first_not_of(WHITESPACE);
-    if( nBeginWord !=std::string::npos)
-    {
-		while (1) {
-		if (nBeginWord == std::string::npos)
-			break;
-		size_t nEndWord = str.find_first_of(WHITESPACE, nBeginWord);
-		if (nEndWord == std::string::npos)
-		{
-			a_vOut.push_back(str.substr(nBeginWord));
-			break;
-		}
-		else
-		{
-			a_vOut.push_back(str.substr(nBeginWord, nEndWord-nBeginWord));
-		}
-		nBeginWord = str.find_first_not_of(WHITESPACE, nEndWord);
-		} 
-    } 
-    else
-	{
-		a_vOut.push_back("\n");
-	}
-}
-
-//unused by me
-int _parseCommandLine(const char* cmd_line, char** args) {
-  FUNC_ENTRY()
-  int i = 0;
-  istringstream iss(_trim(string(cmd_line)).c_str());
-  for(std::string s; iss >> s; ) {
-    args[i] = (char*)malloc(s.length()+1);
-    memset(args[i], 0, s.length()+1);
-    strcpy(args[i], s.c_str());
-    args[++i] = NULL;
-  }
-  return i;
-  FUNC_EXIT()
-}
-
-//unused by me for now
-bool _isBackgroundComamnd(const char* cmd_line) {
-  const string str(cmd_line);
-  return str[str.find_last_not_of(WHITESPACE)] == '&';
-}
-
-//unused by me for now
-void _removeBackgroundSign(char* cmd_line) {
-  const string str(cmd_line);
-  // find last character other than spaces
-  unsigned int idx = str.find_last_not_of(WHITESPACE);
-  // if all characters are spaces then return
-  if (idx == string::npos) {
-    return;
-  }
-  // if the command line does not end with & then return
-  if (cmd_line[idx] != '&') {
-    return;
-  }
-  // replace the & (background sign) with space and then remove all tailing spaces.
-  cmd_line[idx] = ' ';
-  // truncate the command line string up to the last non-space character
-  cmd_line[str.find_last_not_of(WHITESPACE, idx) + 1] = 0;
-}
-
-// TODO: Add your implementation for classes in Commands.h 
-
-//SmallShell::SmallShell() {
-// TODO: add your implementation
-//}
-//
-//SmallShell::~SmallShell() {
-// TODO: add your implementation
 
 SmallShell::SmallShell()
 {
@@ -152,36 +41,14 @@ JobsList* SmallShell::GetJobList()
 {
 	return m_pJobsList;
 }
- 
 
-static bool isRedirectionCommand(const string str) 
-{
-     return str.find('>') != string::npos;
-}
 
-int isPipeSign(vector<string> vcmd)
-{
-	for(uint i=0 ; i < vcmd.size() ; i++)
-	{
-		if(vcmd[i].compare("|") == 0)
-		{
-			return 0;
-		}
-		else if(vcmd[i].compare("|&") == 0)
-		{
-			return 1;
-		}
-	}
-	return -1;
-}
-
-/*
-* Creates and returns a pointer to Command class which matches the given command line (cmd_line)
-*/
+// Creates and returns a pointer to Command class which matches the given command line (cmd_line)
 Command* SmallShell::CreateCommand(const char* cmd_line) {
 	string cmd_s = string(cmd_line);
 	vector<string> args;
 	split(cmd_s, args);
+	
 	size_t pos_pipe_com = cmd_s.find_first_of("|");
 	m_pJobsList->removeFinishedJobs();
 	for(uint j=0 ; j < m_pJobsList->m_pvJobs->size() ; j++)
@@ -190,7 +57,7 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 	}
 	
 	bool is_bg_cmd = _isBackgroundComamnd(cmd_line);
-	char *no_us_cmd_line = new char[strlen(cmd_line)+1];	// no & cmd line
+	char *no_us_cmd_line = new char[strlen(cmd_line)+1];
 	strcpy(no_us_cmd_line, cmd_line);	
 	if(is_bg_cmd)
 	{
@@ -201,7 +68,6 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 	
     if (args.size() == 0)
     {
-        //error handling here
         return nullptr;
     }
     if(pos_pipe_com != string::npos)
@@ -212,7 +78,8 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
     {
 		return new RedirectionCommand(cmd_line);
 	}
-	if (no_us_args[0].compare("chprompt") == 0)	// bug!! chprompt& wont work and its fine, should ignore &
+	
+	if (no_us_args[0].compare("chprompt") == 0)
     {
 		return new ChpromptCommand(no_us_cmd_line);
 	}
@@ -228,9 +95,7 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
     {
 		return new ChangeDirCommand(no_us_cmd_line);
 	}
-//starting here still unimplemented commands, just for skeleton use
-//jobs in process- in lab.cpp edited before beeing put here and into header	
-	else if(no_us_args[0].compare("jobs") == 0)  //potential bug
+	else if(no_us_args[0].compare("jobs") == 0)
     {   
 		return new JobsCommand(no_us_cmd_line);
     }
@@ -238,7 +103,7 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
     {
 		return new KillCommand(no_us_cmd_line);
 	}
-	else if(args[0].compare("fg") == 0)	// needs to be changed
+	else if(args[0].compare("fg") == 0)
     {
 		return new ForegroundCommand(cmd_line);
 	}
@@ -253,13 +118,9 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 	else if(args[0].compare("cp") == 0)
 	{
 		if(args.size() >= 3)
-		{
 			return new CopyCommand(cmd_line, args[1], args[2]);
-		}
 		else 
-		{
 			cerr << "smash error: cp: invalid arguments" << endl;
-		}
 	}
 	else 
 	{
@@ -268,12 +129,13 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 	return nullptr;
 }
 
+
 void ChpromptCommand::execute()
 {
 	vector<string> args;
 	split(c_cmd_line, args);
 	SmallShell& smash = SmallShell::getInstance();
-	if (args.size() > 1)	// need to check args.size() == 1
+	if (args.size() > 1)
 	{
        string cursor_Prompt = args[1];
        cursor_Prompt.push_back('>');
@@ -307,7 +169,7 @@ void ChangeDirCommand::execute()
 	SmallShell& smash = SmallShell::getInstance();
 	if(args.size() == 1)
 	{
-		 cout << smash.GetPrompt(); 
+		cout << smash.GetPrompt(); 
 	}
 	else if(args.size() == 2)
 	{
@@ -342,14 +204,14 @@ void ChangeDirCommand::execute()
 			if(nFirstSlash == 0)
 			{
 				string tempstr = args[1];
-				int res = chdir(tempstr.c_str());	// need to check if tempstr exists
+				int res = chdir(tempstr.c_str());
 				if(res == -1)
 				{
 					cerr << "smash error: chdir failed: No such file or directory" << endl;
 				} 
 				else
 				{
-					smash.SetLWD(string(ca_CurrDir));	// must
+					smash.SetLWD(string(ca_CurrDir));
 				}
 			}
 			//relative path
@@ -357,37 +219,24 @@ void ChangeDirCommand::execute()
 			{
 				string tempstr1 = args[1].insert(0, "/");
 				string tempstr2 = tempstr1.insert(0, ca_CurrDir);
-				int res = chdir(tempstr2.c_str()); // need to check if tempstr1/2 exists
+				int res = chdir(tempstr2.c_str());
 				if(res == -1)
 				{
 					cerr << "smash error: chdir failed: No such file or directory" << endl;
 				}
 				else
 				{
-					smash.SetLWD(string(ca_CurrDir));	// must 
+					smash.SetLWD(string(ca_CurrDir));
 				}
 			}
 		}
 		
 	}
-    else if(args.size()>2)
+    else if(args.size() > 2)
     {
 		cerr << "smash error: cd: too many arguments" << endl;
 	}
 }
-
-static bool checkIfStrIsNum(string str){
-	for(uint i=0 ; i <= str.size()-1 ; i++)
-	{
-		if((str[i] < '0' || str[i] > '9') && str[i] != '-')
-		{
-			return false;
-		}
-	}
-	return true;
-}
-
-
 
 void JobsCommand::execute()
 {
@@ -395,8 +244,6 @@ void JobsCommand::execute()
 	JobsList* jobs_list = smash.GetJobList();
 	jobs_list->printJobsList();
 }
-
-
 
 void KillCommand::execute()
 {
@@ -415,6 +262,7 @@ void KillCommand::execute()
 		cout << "smash error: kill: invalid arguments" << endl;
 		return;
 	}
+	
 	uint jobSeqNum = stoi(args[2]);
 	uint sigNum = stoi(sigStr);
 	JobEntry* job = jobs_list->getJobById(jobSeqNum);
@@ -454,6 +302,7 @@ void ForegroundCommand::execute(){
 	    jobs_list->removeJobByPID(ptempJE->PID);
 	    cout << smash.m_pForeground->sCommand << " : " << smash.m_pForeground->PID << endl;
 	    kill(ptempJE->PID,SIGCONT);
+	    
 	    int status;
 	    waitpid(ptempJE->PID, &status, WUNTRACED);
 	    smash.m_pForeground = nullptr;
@@ -482,6 +331,7 @@ void ForegroundCommand::execute(){
 	        jobs_list->removeJobByPID(smash.m_pForeground->PID);
 	        cout << smash.m_pForeground->sCommand << " : " << smash.m_pForeground->PID << endl;
 	        kill(smash.m_pForeground->PID,SIGCONT);
+	        
 	        int status;
 	        waitpid(ptempJE->PID, &status, WUNTRACED);
 	        smash.m_pForeground = nullptr;
@@ -528,6 +378,7 @@ void BackgroundCommand::execute(){
 			cerr << "smash error: bg: invalid arguments" << ia.what() << endl;
 			return;
 		}
+		
 	    JobEntry* ptempJE = jobs_list->getJobById(stoi(s_cmd[1]));
 	    if(jobs_list->m_pvJobs->size() < 1 || ptempJE == nullptr)   //empty list or no job with jobid
 	    {
@@ -632,7 +483,7 @@ void QuitCommand::execute()
 void CopyCommand::execute()
 {
 	int fd_old = open(old_file.c_str(), O_RDONLY);
-    int fd_new = open(new_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644); // I want to change it, not the group/others 644
+    int fd_new = open(new_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     
     if(fd_old == -1 || fd_new == -1)
     {
@@ -640,7 +491,7 @@ void CopyCommand::execute()
 		return;
 	}
 	char buf[BUFFSIZE];
-	pid_t pid = fork();	 // should be added to the job list?
+	pid_t pid = fork();
 	if (pid == 0) 
 	{
 		setpgrp();
@@ -677,10 +528,8 @@ void CopyCommand::execute()
 
 int redirectOrAppend(vector<string> vcmd)
 {
-	if( vcmd[vcmd.size()-2] == ">" )
-	{ 
+	if(vcmd[vcmd.size()-2] == ">")
 		return 0;
-	}	
 	else if(vcmd[vcmd.size()-2] == ">>")
 		return 1;
 	else 
@@ -690,12 +539,10 @@ int redirectOrAppend(vector<string> vcmd)
 void RedirectionCommand::execute()
 {
 	vector<string> sec_com;
-	
 	SmallShell& smash = SmallShell::getInstance();
 
 	char *temp_cmd = new char[strlen(c_cmd_line)+1];
 	strcpy(temp_cmd, c_cmd_line);	
-	
 	
 	string s_temp_cmd ( c_cmd_line );
 	size_t pos_sec_com = s_temp_cmd.find_first_of(">");
@@ -719,11 +566,11 @@ void RedirectionCommand::execute()
 	int fd_open;
 	if(resROA == 0)
 	{
-		fd_open = open(sec_com[0].c_str(), O_CREAT | O_WRONLY | O_TRUNC , 0644 ); // (0)(user)(group)(others)
+		fd_open = open(sec_com[0].c_str(), O_CREAT | O_WRONLY | O_TRUNC , 0644);
 	}
 	else if(resROA == 1)
 	{
-		fd_open = open(sec_com[0].c_str(), O_CREAT | O_WRONLY | O_APPEND , 0644 );
+		fd_open = open(sec_com[0].c_str(), O_CREAT | O_WRONLY | O_APPEND , 0644);
 	}
 	if(fd_open == -1) 
 	{ 
@@ -903,12 +750,6 @@ void PipeCommand::execute()
 }
 
 
-// a_nJobId=-1 ,a_bForeground=false in case job brought first time to list,and has no Jid assigned
-// a_nJobId>0, a_bForeground=true if fg command issued on job and job
-// will be removed from vector and added to m_pForeground
-// if it was brought second time after fg command will be used 
-// relevant JobId from a_bForeground, a_bForeground=false and added to vector m_pvJobs' tail
-
 int JobsList::getLastJobId() {
 	int max = 0;
     for (uint i=0 ; i < m_pvJobs->size() ; i++) 
@@ -934,7 +775,7 @@ void JobsList::addJob(string a_strCommand, int a_nPid, EJobStatus a_status)
 	{
 		njobId = (m_pvJobs->back().nId) + 1;
 	}
-	JobEntry a_sJEtemp {.nId = njobId, .PID = a_nPid, .sCommand = a_strCommand, .status = a_status, .time_started = time(NULL) }; // change to new JobEntry(..) ?
+	JobEntry a_sJEtemp {.nId = njobId, .PID = a_nPid, .sCommand = a_strCommand, .status = a_status, .time_started = time(NULL) };
 	m_pvJobs->push_back(a_sJEtemp);
 }
 
@@ -952,8 +793,7 @@ void JobsList::addJob(JobEntry job)
 	}
 }
 
-
-void JobsList::addJobToForeground(string a_strCommand, int a_nPid) //sets jobId to -1 since it was never on joblist
+void JobsList::addJobToForeground(string a_strCommand, int a_nPid) // sets jobId to -1 since it was never on joblist
 {
 	SmallShell::m_pForeground = new JobEntry(-1, a_nPid, a_strCommand, eJobStatus_Foreground, time(NULL));
 }
@@ -969,15 +809,11 @@ void JobsList::applyToAll(void (*a_pfun)(int))
 	}
 }
 
-void JobsList::printJobsList()  //To add to class list   ///Have no idea what are you trying to do here, just use aplly
+void JobsList::printJobsList()
 {
 	
-	if(m_pvJobs->size() == 0)
+	if(m_pvJobs->size() != 0)
 	{
-		//
-	}
-	else
-	{	
 		removeFinishedJobs();
 		for(uint j=0 ; j < m_pvJobs->size() ; j++)
 		{
@@ -993,9 +829,11 @@ void JobsList::printJobByPlace(int a_viJobs)
 	cout << "[" << m_pvJobs->at(a_viJobs).nId << "] ";
 	cout << m_pvJobs->at(a_viJobs).sCommand;
 	cout << " : " << m_pvJobs->at(a_viJobs).PID << " ";
+	
 	time_t tactual_time = time(NULL);
 	double elapsed_time = difftime(tactual_time,m_pvJobs->at(a_viJobs).time_started);
 	cout << elapsed_time << " secs";
+	
 	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Stopped)
 	{
 		cout << " (stopped)" << endl;
@@ -1014,27 +852,25 @@ void JobsList::updateJobstatusByPlace(int a_viJobs)
     {
          perror("waitpid");
     }
-    if(w > 0)
+    else if(w > 0)
     {
 		if(WIFEXITED(wstatus))
 		{
-		//	printf("exited, status=%d\n", WEXITSTATUS(wstatus));
 			m_pvJobs->at(a_viJobs).status = eJobStatus_Finished;
-		} else if(WIFSIGNALED(wstatus)) {
-		//	printf("killed by signal %d\n", WTERMSIG(wstatus));
+		} 
+		else if(WIFSIGNALED(wstatus))
+		{
 			m_pvJobs->at(a_viJobs).status = eJobStatus_Finished;
-		} else if(WIFSTOPPED(wstatus)) {
-		//	printf("stopped by signal %d\n", WSTOPSIG(wstatus));
+		} 
+		else if(WIFSTOPPED(wstatus))
+		{
 			m_pvJobs->at(a_viJobs).status = eJobStatus_Stopped;
-		} else if(WIFCONTINUED(wstatus)) {
-		//	printf("continued\n");
+		} 
+		else if(WIFCONTINUED(wstatus))
+		{
 			m_pvJobs->at(a_viJobs).status = eJobStatus_Background;
 		} 
     }
-    if (w == 0)
-    {
-	//	cout<<"Nothing changed for" << w <<endl;
-	}
 }
 
 void JobsList::updateJobstatusByPID(EJobStatus a_nstatus, pid_t a_nPID)
@@ -1042,18 +878,18 @@ void JobsList::updateJobstatusByPID(EJobStatus a_nstatus, pid_t a_nPID)
 	for(uint i=0 ; i < m_pvJobs->size() ; i++)
 	{
 	    if(m_pvJobs->at(i).PID == a_nPID)
-	        {
+	    {
 	         m_pvJobs->at(i).status = a_nstatus;
              return;
-	        }
+	    }
     }
 }
 
 bool JobsList::removeJobByPlace(int a_viJobs)
 {
-	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Finished) // i think you should do poll here to check if the job is alive. Who updates the status?
+	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Finished)
 	{
-		m_pvJobs->erase(m_pvJobs->begin()+a_viJobs);
+		m_pvJobs->erase(m_pvJobs->begin() + a_viJobs);
 		return true;
 	}
 	else
@@ -1068,7 +904,7 @@ void JobsList::removeFinishedJobs()
 	{ 
 		for(uint i=0 ; i < m_pvJobs->size() ; i++)
 	    {
-			if(removeJobByPlace(i)) //expect problems here. when you delete from list its size changes. Google how to do it properly
+			if(removeJobByPlace(i))
 			{
 				i--;
 			}
@@ -1079,7 +915,7 @@ void JobsList::removeFinishedJobs()
 JobEntry* JobsList::getJobById(int a_jobId)
 {
 	int i = getIndexById(a_jobId);
-    if (i >= 0)
+    if(i >= 0)
     {
 		return &(m_pvJobs->at(i));
 	}
@@ -1101,9 +937,9 @@ JobEntry* JobsList::getJobByPID(int pid)
 void JobsList::removeJobById(int a_jobId)
 {
     int i = getIndexById(a_jobId);
-    if (i >= 0)
+    if(i >= 0)
     {
-		m_pvJobs->erase(m_pvJobs->begin()+i);
+		m_pvJobs->erase(m_pvJobs->begin() + i);
 	}
 }
 
@@ -1113,7 +949,7 @@ void JobsList::removeJobByPID(int pid)
 	{
 		if(m_pvJobs->at(i).PID == pid)
 		{
-			m_pvJobs->erase(m_pvJobs->begin()+i);
+			m_pvJobs->erase(m_pvJobs->begin() + i);
 		}
 	}
 }
@@ -1123,9 +959,9 @@ int JobsList::getIndexById(int a_jobId)
 	for (uint i=0 ; i < m_pvJobs->size() ; i++)
 	{
 	    if(m_pvJobs->operator[](i).nId == a_jobId)
-		   {
+		{
 				return i;
-		   }
+		}
 	}
     return -1;
 }
@@ -1147,15 +983,18 @@ JobEntry* JobsList::getForegroundJob()
     }
 	for (uint i=0 ; i < m_pvJobs->size() ; i++)
 	{
-		if(m_pvJobs->at(i).status == eJobStatus_Foreground)
-		return &(m_pvJobs->at(i));
+		if(m_pvJobs->at(i).status == eJobStatus_Foreground) 
+		{
+			return &(m_pvJobs->at(i));
+		}
 	}
 	return NULL;
 }
 
-JobEntry* JobsList::getLastStoppedJob()// LastStopped needs to be updated by handler
+JobEntry* JobsList::getLastStoppedJob()
 {
-	if (LastStopped < 0){
+	if(LastStopped < 0)
+	{
 	    return nullptr;
 	}
 	else
@@ -1163,18 +1002,16 @@ JobEntry* JobsList::getLastStoppedJob()// LastStopped needs to be updated by han
 	    return getJobById(LastStopped);
     }
 }
+
 // -----here functions of JobsList end-------
 
 
 
 void SmallShell::executeCommand(const char *cmd_line) {
-	// TODO: Add your implementation here
-	// for example:
 	Command* cmd = CreateCommand(cmd_line);
 	if(cmd != nullptr) 
 	{
 		cmd->execute();
 		delete cmd;
 	}
-  // Please note that you must fork smash process for some commands (e.g., external commands....)
 }
