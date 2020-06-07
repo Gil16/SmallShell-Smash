@@ -5,6 +5,12 @@ A Unix shell is a command-line interpreter or shell that provides a command-line
 
 Smash, is a Small Linux shell, which will support only a subset of its commands.
 
+## Installation:
+```
+make
+./smash 
+```
+
 ## Smash commands:
 
 **Change Prompt Command:**
