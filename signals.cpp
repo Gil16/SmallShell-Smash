@@ -11,9 +11,8 @@ void ctrlZHandler(int sig_num) {
 	JobEntry* foreground = smash.m_pForeground;
 	if(!foreground)
 		return;
-		
 	foreground->status = EJobStatus::eJobStatus_Stopped;
-	smash.m_pJobsList->addJob(*foreground);
+	smash.m_pJobsList->addJob(foreground);
 	kill(foreground->PID, SIGSTOP);	
 	cout << "smash: process " << foreground->PID << " was stopped" << endl;
 	
@@ -26,12 +25,9 @@ void ctrlCHandler(int sig_num) {
 	SmallShell& smash = SmallShell::getInstance();
 	JobEntry* foreground = smash.m_pForeground;
 	if(!foreground)
-		return;
-		
+		return;	
 	kill(foreground->PID, SIGKILL);	
 	cout << "smash: process " << foreground->PID << " was killed" << endl;
 	smash.m_pJobsList->removeJobByPID(foreground->PID);
-	
-	delete smash.m_pForeground;
 	smash.m_pForeground = nullptr;
 }

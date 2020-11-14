@@ -103,17 +103,17 @@ struct JobEntry {
 class JobsList {
 public: 
 
-	JobsList(){ m_pvJobs = new vector<JobEntry>; }
-	~JobsList() { delete m_pvJobs; }
+	JobsList() : m_pvJobs() {}
+	~JobsList() = default;
 	void addJob(string a_strCommand, int a_nPid, EJobStatus a_status); // when you add it's always not in foreground
-	void addJob(JobEntry job);
+	void addJob(JobEntry* job);
 	void addJobToForeground(string a_strCommand, int a_nPid); 
 	void applyToAll(void (*a_pfun)(int));
 
 	void printJobsList ();
 	bool removeJobByPlace(int a_viJobs);
 	void printJobByPlace(int a_viJobs);
-	void printJobBeforeQuit(JobEntry job);
+	void printJobBeforeQuit(JobEntry* job);
 	void removeFinishedJobs();
 	void updateJobstatusByPlace(int a_viJobs);
 	void updateJobstatusByPID(EJobStatus a_nstatus,pid_t a_nPID);
@@ -127,7 +127,7 @@ public:
 	JobEntry* getForegroundJob();
 	JobEntry* getLastStoppedJob();
 
-	vector<JobEntry>* m_pvJobs;
+	vector<JobEntry*> m_pvJobs;
 	int LastStopped = -1; // -1 on initialization or when no last stopped
 private:
 	int getIndexById(int a_jobId); 

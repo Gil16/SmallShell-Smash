@@ -51,7 +51,7 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 	
 	size_t pos_pipe_com = cmd_s.find_first_of("|");
 	m_pJobsList->removeFinishedJobs();
-	for(uint j=0 ; j < m_pJobsList->m_pvJobs->size() ; j++)
+	for(uint j=0 ; j < m_pJobsList->m_pvJobs.size() ; j++)
 	{
 			m_pJobsList->updateJobstatusByPlace(j);
 	}
@@ -193,7 +193,6 @@ void ChangeDirCommand::execute()
 			string tempstr = string(ca_CurrDir);
 			size_t nLastSlash = tempstr.find_last_of("/");
 			string sdestDir = tempstr.substr(0, nLastSlash);
-			cout << sdestDir << endl;
 			chdir(sdestDir.c_str());
 			smash.SetLWD(string(ca_CurrDir));
 		}
@@ -292,7 +291,7 @@ void ForegroundCommand::execute(){
 	jobs_list->removeFinishedJobs();
 	if(s_cmd.size() == 1)
 	{
-	    if(jobs_list->m_pvJobs->size() == 0)
+	    if(jobs_list->m_pvJobs.size() == 0)
 	    {
 		    cout << "smash error: fg: jobs list is empty" << endl;
 		    return;
@@ -300,12 +299,13 @@ void ForegroundCommand::execute(){
 		JobEntry* ptempJE = jobs_list->getJobById (jobs_list->getLastJobId());
 	    SmallShell::m_pForeground = new JobEntry(ptempJE->nId, ptempJE->PID, ptempJE->sCommand, eJobStatus_Foreground, ptempJE->time_started);
 	    jobs_list->removeJobByPID(ptempJE->PID);
+	    
 	    cout << smash.m_pForeground->sCommand << " : " << smash.m_pForeground->PID << endl;
 	    kill(ptempJE->PID,SIGCONT);
 	    
 	    int status;
 	    waitpid(ptempJE->PID, &status, WUNTRACED);
-	    smash.m_pForeground = nullptr;
+	    smash.m_pForeground = nullptr;  // TODO: really?
 	    return;
 	}
 	else if (s_cmd.size() == 2)
@@ -319,22 +319,24 @@ void ForegroundCommand::execute(){
 			cerr << "smash error: fg: invalid arguments" << endl;
 			return;
 		}
+		
 		JobEntry* ptempJE = jobs_list->getJobById(stoi(s_cmd[1]));
-		if(jobs_list->m_pvJobs->size() < 1 || ptempJE == nullptr)   //empty list or no job with jobid
+		if(jobs_list->m_pvJobs.size() < 1 || ptempJE == nullptr)   //empty list or no job with jobid
 	    {
 		    cout << "smash error: fg: job-id " << s_cmd[1] << " does not exist" << endl;
 		    return;
 	    }
 	    else 
 	    {
-			SmallShell::m_pForeground = new JobEntry(ptempJE->nId, ptempJE->PID, ptempJE->sCommand, eJobStatus_Foreground, ptempJE->time_started);
-	        jobs_list->removeJobByPID(smash.m_pForeground->PID);
-	        cout << smash.m_pForeground->sCommand << " : " << smash.m_pForeground->PID << endl;
-	        kill(smash.m_pForeground->PID,SIGCONT);
+	        cout << ptempJE->sCommand << " : " << ptempJE->PID << endl;
+			kill(ptempJE->PID,SIGCONT);
+			
+			jobs_list->removeJobByPID(ptempJE->PID);
+	        SmallShell::m_pForeground = ptempJE;
 	        
 	        int status;
 	        waitpid(ptempJE->PID, &status, WUNTRACED);
-	        smash.m_pForeground = nullptr;
+	        SmallShell::m_pForeground = nullptr;
 	        return;
 		}
 	}
@@ -380,7 +382,7 @@ void BackgroundCommand::execute(){
 		}
 		
 	    JobEntry* ptempJE = jobs_list->getJobById(stoi(s_cmd[1]));
-	    if(jobs_list->m_pvJobs->size() < 1 || ptempJE == nullptr)   //empty list or no job with jobid
+	    if(jobs_list->m_pvJobs.size() < 1 || ptempJE == nullptr)   //empty list or no job with jobid
 	    {
 		    cout << "smash error: bg: job-id " << s_cmd[1] << " does not exist" << endl;
 	    }
@@ -450,18 +452,18 @@ void ExternalCommand::execute(){
 	delete [] temp_cmd;
 }
 
-void JobsList::printJobBeforeQuit(JobEntry job)
+void JobsList::printJobBeforeQuit(JobEntry* job)
 {
-	cout << job.PID << ": " << job.sCommand << endl;
+	cout << job->PID << ": " << job->sCommand << endl;
 }
 
 void JobsList::killAllJobs()
 {
-	cout << "smash: sending SIGKILL signal to " << m_pvJobs->size() << " jobs:" << endl;
-	for(uint i=0 ; i < m_pvJobs->size() ; i++)
+	cout << "smash: sending SIGKILL signal to " << m_pvJobs.size() << " jobs:" << endl;
+	for(uint i=0 ; i < m_pvJobs.size() ; i++)
 	{
-		kill(m_pvJobs->at(i).PID, SIGKILL);
-		printJobBeforeQuit(m_pvJobs->at(i));
+		kill(m_pvJobs.at(i)->PID, SIGKILL);
+		printJobBeforeQuit(m_pvJobs.at(i));
 	}
 }
 
@@ -752,12 +754,12 @@ void PipeCommand::execute()
 
 int JobsList::getLastJobId() {
 	int max = 0;
-    for (uint i=0 ; i < m_pvJobs->size() ; i++) 
+    for (uint i=0 ; i < m_pvJobs.size() ; i++) 
     {
-		JobEntry job = m_pvJobs->at(i);
-        if (job.nId > max)
+		JobEntry* job = m_pvJobs.at(i);
+        if (job->nId > max)
         {
-			max = job.nId;
+			max = job->nId;
         }
     }
     return max;
@@ -767,29 +769,29 @@ void JobsList::addJob(string a_strCommand, int a_nPid, EJobStatus a_status)
 {
 	removeFinishedJobs();
 	int njobId;
-	if(m_pvJobs->size() == 0) 
+	if(m_pvJobs.size() == 0) 
 	{
 		njobId = 1;
 	}
 	else
 	{
-		njobId = (m_pvJobs->back().nId) + 1;
+		njobId = (m_pvJobs.back()->nId) + 1;
 	}
-	JobEntry a_sJEtemp {.nId = njobId, .PID = a_nPid, .sCommand = a_strCommand, .status = a_status, .time_started = time(NULL) };
-	m_pvJobs->push_back(a_sJEtemp);
+	JobEntry* a_sJEtemp = new JobEntry(njobId, a_nPid, a_strCommand, a_status, time(NULL));
+	m_pvJobs.push_back(a_sJEtemp);
 }
 
-void JobsList::addJob(JobEntry job)
+void JobsList::addJob(JobEntry* job)
 {
 	removeFinishedJobs();
-	if(job.nId != -1)	// was on the job list
+	if(job->nId != -1)	// was on the job list
 	{
-		m_pvJobs->push_back(job);
+		m_pvJobs.push_back(job);
 	}
 	else  // first time on the job list
 	{
-		job.nId = getLastJobId() + 1;
-		m_pvJobs->push_back(job);
+		job->nId = getLastJobId() + 1;
+		m_pvJobs.push_back(job);
 	}
 }
 
@@ -800,9 +802,9 @@ void JobsList::addJobToForeground(string a_strCommand, int a_nPid) // sets jobId
 
 void JobsList::applyToAll(void (*a_pfun)(int))
 {
-	for(uint i=0 ; i < m_pvJobs->size() ; i++)
+	for(uint i=0 ; i < m_pvJobs.size() ; i++)
 	{
-        if(m_pvJobs->at(i).status != eJobStatus_Foreground)
+        if(m_pvJobs.at(i)->status != eJobStatus_Foreground)
         {
 			a_pfun(i);
         }
@@ -812,10 +814,10 @@ void JobsList::applyToAll(void (*a_pfun)(int))
 void JobsList::printJobsList()
 {
 	
-	if(m_pvJobs->size() != 0)
+	if(m_pvJobs.size() != 0)
 	{
 		removeFinishedJobs();
-		for(uint j=0 ; j < m_pvJobs->size() ; j++)
+		for(uint j=0 ; j < m_pvJobs.size() ; j++)
 		{
 			updateJobstatusByPlace(j);
 			printJobByPlace(j);
@@ -826,19 +828,19 @@ void JobsList::printJobsList()
 
 void JobsList::printJobByPlace(int a_viJobs)
 {
-	cout << "[" << m_pvJobs->at(a_viJobs).nId << "] ";
-	cout << m_pvJobs->at(a_viJobs).sCommand;
-	cout << " : " << m_pvJobs->at(a_viJobs).PID << " ";
+	cout << "[" << m_pvJobs.at(a_viJobs)->nId << "] ";
+	cout << m_pvJobs.at(a_viJobs)->sCommand;
+	cout << " : " << m_pvJobs.at(a_viJobs)->PID << " ";
 	
 	time_t tactual_time = time(NULL);
-	double elapsed_time = difftime(tactual_time,m_pvJobs->at(a_viJobs).time_started);
+	double elapsed_time = difftime(tactual_time,m_pvJobs.at(a_viJobs)->time_started);
 	cout << elapsed_time << " secs";
 	
-	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Stopped)
+	if(m_pvJobs.at(a_viJobs)->status == eJobStatus_Stopped)
 	{
 		cout << " (stopped)" << endl;
 	}
-	else if(m_pvJobs->at(a_viJobs).status == eJobStatus_Background)
+	else if(m_pvJobs.at(a_viJobs)->status == eJobStatus_Background)
 	{
 		cout << endl;
 	}
@@ -847,7 +849,7 @@ void JobsList::printJobByPlace(int a_viJobs)
 void JobsList::updateJobstatusByPlace(int a_viJobs)
 {
 	int wstatus;
-	pid_t w = waitpid(m_pvJobs->at(a_viJobs).PID, &wstatus, WNOHANG | WUNTRACED);
+	pid_t w = waitpid(m_pvJobs.at(a_viJobs)->PID, &wstatus, WNOHANG | WUNTRACED);
     if(w == -1) 
     {
          perror("waitpid");
@@ -856,30 +858,30 @@ void JobsList::updateJobstatusByPlace(int a_viJobs)
     {
 		if(WIFEXITED(wstatus))
 		{
-			m_pvJobs->at(a_viJobs).status = eJobStatus_Finished;
+			m_pvJobs.at(a_viJobs)->status = eJobStatus_Finished;
 		} 
 		else if(WIFSIGNALED(wstatus))
 		{
-			m_pvJobs->at(a_viJobs).status = eJobStatus_Finished;
+			m_pvJobs.at(a_viJobs)->status = eJobStatus_Finished;
 		} 
 		else if(WIFSTOPPED(wstatus))
 		{
-			m_pvJobs->at(a_viJobs).status = eJobStatus_Stopped;
+			m_pvJobs.at(a_viJobs)->status = eJobStatus_Stopped;
 		} 
 		else if(WIFCONTINUED(wstatus))
 		{
-			m_pvJobs->at(a_viJobs).status = eJobStatus_Background;
+			m_pvJobs.at(a_viJobs)->status = eJobStatus_Background;
 		} 
     }
 }
 
 void JobsList::updateJobstatusByPID(EJobStatus a_nstatus, pid_t a_nPID)
 {
-	for(uint i=0 ; i < m_pvJobs->size() ; i++)
+	for(uint i=0 ; i < m_pvJobs.size() ; i++)
 	{
-	    if(m_pvJobs->at(i).PID == a_nPID)
+	    if(m_pvJobs.at(i)->PID == a_nPID)
 	    {
-	         m_pvJobs->at(i).status = a_nstatus;
+	         m_pvJobs.at(i)->status = a_nstatus;
              return;
 	    }
     }
@@ -887,9 +889,9 @@ void JobsList::updateJobstatusByPID(EJobStatus a_nstatus, pid_t a_nPID)
 
 bool JobsList::removeJobByPlace(int a_viJobs)
 {
-	if(m_pvJobs->at(a_viJobs).status == eJobStatus_Finished)
+	if(m_pvJobs.at(a_viJobs)->status == eJobStatus_Finished)
 	{
-		m_pvJobs->erase(m_pvJobs->begin() + a_viJobs);
+		m_pvJobs.erase(m_pvJobs.begin() + a_viJobs);
 		return true;
 	}
 	else
@@ -900,9 +902,9 @@ bool JobsList::removeJobByPlace(int a_viJobs)
 
 void JobsList::removeFinishedJobs()
 {
-	if(m_pvJobs->size() > 0)
+	if(m_pvJobs.size() > 0)
 	{ 
-		for(uint i=0 ; i < m_pvJobs->size() ; i++)
+		for(uint i=0 ; i < m_pvJobs.size() ; i++)
 	    {
 			if(removeJobByPlace(i))
 			{
@@ -917,18 +919,18 @@ JobEntry* JobsList::getJobById(int a_jobId)
 	int i = getIndexById(a_jobId);
     if(i >= 0)
     {
-		return &(m_pvJobs->at(i));
+		return m_pvJobs.at(i);
 	}
 	return NULL;
 }
 
 JobEntry* JobsList::getJobByPID(int pid)
 {
-	for(uint i=0 ; i < m_pvJobs->size() ; i++)
+	for(uint i=0 ; i < m_pvJobs.size() ; i++)
 	{
-		if(m_pvJobs->at(i).PID == pid)
+		if(m_pvJobs.at(i)->PID == pid)
 		{
-			return &(m_pvJobs->at(i));
+			return m_pvJobs.at(i);
 		}
 	}
 	return NULL;
@@ -939,26 +941,28 @@ void JobsList::removeJobById(int a_jobId)
     int i = getIndexById(a_jobId);
     if(i >= 0)
     {
-		m_pvJobs->erase(m_pvJobs->begin() + i);
+		m_pvJobs.erase(m_pvJobs.begin() + i);
+		return;
 	}
 }
 
 void JobsList::removeJobByPID(int pid)
 {
-	for(uint i=0 ; i < m_pvJobs->size() ; i++)
+	for(uint i=0 ; i < m_pvJobs.size() ; i++)
 	{
-		if(m_pvJobs->at(i).PID == pid)
+		if(m_pvJobs.at(i)->PID == pid)
 		{
-			m_pvJobs->erase(m_pvJobs->begin() + i);
+			m_pvJobs.erase(m_pvJobs.begin() + i);
+			return;
 		}
 	}
 }
 
 int JobsList::getIndexById(int a_jobId)
 {
-	for (uint i=0 ; i < m_pvJobs->size() ; i++)
+	for (uint i=0 ; i < m_pvJobs.size() ; i++)
 	{
-	    if(m_pvJobs->operator[](i).nId == a_jobId)
+	    if(m_pvJobs.operator[](i)->nId == a_jobId)
 		{
 				return i;
 		}
@@ -968,24 +972,24 @@ int JobsList::getIndexById(int a_jobId)
 
 JobEntry* JobsList::getLastJob()
 {
-	if(m_pvJobs->size() != 0)
+	if(m_pvJobs.size() != 0)
 	{
-		return &(m_pvJobs->at(m_pvJobs->size() - 1));
+		return m_pvJobs.at(m_pvJobs.size() - 1);
     }
     return NULL;
 }
 
 JobEntry* JobsList::getForegroundJob()
 {
-	if(m_pvJobs->size() == 0)
+	if(m_pvJobs.size() == 0)
 	{
 		return NULL;
     }
-	for (uint i=0 ; i < m_pvJobs->size() ; i++)
+	for (uint i=0 ; i < m_pvJobs.size() ; i++)
 	{
-		if(m_pvJobs->at(i).status == eJobStatus_Foreground) 
+		if(m_pvJobs.at(i)->status == eJobStatus_Foreground) 
 		{
-			return &(m_pvJobs->at(i));
+			return m_pvJobs.at(i);
 		}
 	}
 	return NULL;
