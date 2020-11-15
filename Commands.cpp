@@ -997,14 +997,15 @@ JobEntry* JobsList::getForegroundJob()
 
 JobEntry* JobsList::getLastStoppedJob()
 {
-	if(LastStopped < 0)
-	{
-	    return nullptr;
-	}
-	else
-	{
-	    return getJobById(LastStopped);
+	auto i = m_pvJobs.end();
+    while (i != m_pvJobs.begin()) {
+		--i;
+
+    if ((*i)->status == eJobStatus_Stopped) {
+			return *i;
+		}
     }
+    return nullptr;
 }
 
 // -----here functions of JobsList end-------
