@@ -180,7 +180,7 @@ void ChangeDirCommand::execute()
 			string sdestDir = smash.GetLWD();
 			if(sdestDir.size() == 0) 
 			{ 
-				cerr << "smash error: cd: OLDPWD not set" << endl; 
+				cout << "smash error: cd: OLDPWD not set" << endl; 
 			}
 			else
 			{
@@ -206,7 +206,7 @@ void ChangeDirCommand::execute()
 				int res = chdir(tempstr.c_str());
 				if(res == -1)
 				{
-					cerr << "smash error: chdir failed: No such file or directory" << endl;
+					perror("smash error: chdir failed");
 				} 
 				else
 				{
@@ -221,7 +221,7 @@ void ChangeDirCommand::execute()
 				int res = chdir(tempstr2.c_str());
 				if(res == -1)
 				{
-					cerr << "smash error: chdir failed: No such file or directory" << endl;
+					perror("smash error: chdir failed");
 				}
 				else
 				{
@@ -233,7 +233,7 @@ void ChangeDirCommand::execute()
 	}
     else if(args.size() > 2)
     {
-		cerr << "smash error: cd: too many arguments" << endl;
+		cout << "smash error: cd: too many arguments" << endl;
 	}
 }
 
@@ -301,11 +301,15 @@ void ForegroundCommand::execute(){
 	    jobs_list->removeJobByPID(ptempJE->PID);
 	    
 	    cout << smash.m_pForeground->sCommand << " : " << smash.m_pForeground->PID << endl;
-	    kill(ptempJE->PID,SIGCONT);
+	    int resKill = kill(ptempJE->PID,SIGCONT);
+		if(resKill == -1)
+		{
+			perror("smash error: kill failed");
+		}
 	    
 	    int status;
 	    waitpid(ptempJE->PID, &status, WUNTRACED);
-	    smash.m_pForeground = nullptr;  // TODO: really?
+	    smash.m_pForeground = nullptr;
 	    return;
 	}
 	else if (s_cmd.size() == 2)
@@ -316,7 +320,7 @@ void ForegroundCommand::execute(){
 		}
 		catch(const std::invalid_argument& ia)
 		{
-			cerr << "smash error: fg: invalid arguments" << endl;
+			cout << "smash error: fg: invalid arguments" << endl;
 			return;
 		}
 		
@@ -329,7 +333,11 @@ void ForegroundCommand::execute(){
 	    else 
 	    {
 	        cout << ptempJE->sCommand << " : " << ptempJE->PID << endl;
-			kill(ptempJE->PID,SIGCONT);
+			int resKill = kill(ptempJE->PID,SIGCONT);
+			if(resKill == -1)
+			{
+				perror("smash error: kill failed");
+			}
 			
 			jobs_list->removeJobByPID(ptempJE->PID);
 	        SmallShell::m_pForeground = ptempJE;
@@ -358,7 +366,12 @@ void BackgroundCommand::execute(){
 		JobEntry* ptempJE = jobs_list->getLastStoppedJob();
 		if(ptempJE != nullptr){
 			cout << ptempJE->sCommand << " : " << ptempJE->PID << endl;
-	        kill(ptempJE->PID,SIGCONT);
+	        int resKill = kill(ptempJE->PID,SIGCONT);
+	        if(resKill == -1)
+			{
+				perror("smash error: kill failed");
+			}
+	        
 	        ptempJE->status = eJobStatus_Background;
 	        jobs_list->LastStopped = -1;
 	        return;
@@ -377,7 +390,7 @@ void BackgroundCommand::execute(){
 		}
 		catch(const std::invalid_argument& ia)
 		{
-			cerr << "smash error: bg: invalid arguments" << ia.what() << endl;
+			cout << "smash error: bg: invalid arguments" << endl;
 			return;
 		}
 		
@@ -395,7 +408,11 @@ void BackgroundCommand::execute(){
 	        cout << ptempJE->sCommand << " : " << ptempJE->PID << endl;
 	        ptempJE->status = eJobStatus_Background;
 	        jobs_list->LastStopped = -1;
-	        kill(ptempJE->PID,SIGCONT);
+	        int resKill = kill(ptempJE->PID,SIGCONT);
+	        if(resKill == -1)
+			{
+				perror("smash error: kill failed");
+			}
 	        return;
 	    }
     }
@@ -423,7 +440,7 @@ void ExternalCommand::execute(){
 			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL};
 			if(execv(args[0], args) == -1)
 			{
-				cerr << "bash err" << endl;
+				perror("smash error: execv failed");
 			}
 			exit(0);
 		} 
@@ -439,7 +456,7 @@ void ExternalCommand::execute(){
 			char* args[] = {(char*)"/bin/bash", (char*)"-c", temp_cmd, NULL};
 			if(execv(args[0], args) == -1)
 			{
-				cerr << "bash err" << endl;
+				perror("smash error: execv failed");
 			}
 			exit(0);
 		} else {
@@ -486,10 +503,9 @@ void CopyCommand::execute()
 {
 	int fd_old = open(old_file.c_str(), O_RDONLY);
     int fd_new = open(new_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    
     if(fd_old == -1 || fd_new == -1)
     {
-		cerr << "smash error: open failed" <<  endl;
+		perror("smash error: open failed");
 		return;
 	}
 	char buf[BUFFSIZE];
@@ -499,33 +515,35 @@ void CopyCommand::execute()
 		setpgrp();
 		while(true)
 		{
-			ssize_t c_r_count = read(fd_old, buf, BUFFSIZE);
+			ssize_t c_r_count = read(fd_old, &buf, BUFFSIZE);
 			if(c_r_count == 0) // EOF, finished reading
 			{
 				break;
 			}
 			else if(c_r_count == -1)
 			{
-				cerr << "smash error: read failed" << endl;
-				return;
+				perror("smash error: read failed");
 			}
-			ssize_t c_w_count = write(fd_new, buf, c_r_count);
+			
+			ssize_t c_w_count = write(fd_new, &buf, c_r_count);
 			if(c_w_count == -1)
 			{
-				cerr << "smash error: write failed" << endl;
-				return;
+				perror("smash error: write failed");
 			}
 		}
+		
 		int c_fd_old = close(fd_old);
 		int c_fd_new = close(fd_new);
 		if(c_fd_old == -1 || c_fd_new == -1)
 		{
-			cerr << "smash error: close failed" << endl;
+			perror("smash error: close failed");
 			return;
 		}
 		cout << "smash: " << old_file << " was copied to " << new_file << endl;
 		exit(0);
 	}
+	int wstatus;
+	waitpid(pid, &wstatus, WUNTRACED);
 }
 
 int redirectOrAppend(vector<string> vcmd)
@@ -560,11 +578,6 @@ void RedirectionCommand::execute()
 	split(s_tempcom2.c_str(), sec_com);
 	auto cmd = smash.CreateCommand(s_tempcom1.c_str());
 	
-	int stdout_copy = dup(1);
-	int stderr_copy = dup(2);
-	close(1);
-	close(2);
-	
 	int fd_open;
 	if(resROA == 0)
 	{
@@ -576,30 +589,44 @@ void RedirectionCommand::execute()
 	}
 	if(fd_open == -1) 
 	{ 
-		cout << "smash error: open failed" << endl;
+		perror("smash error: open failed");
+		return;
 	}
+	
+	int stdout_copy = dup(1);
+	int stderr_copy = dup(2);
+	if(stdout_copy == -1 || stderr_copy == -1) 
+	{ 
+		perror("smash error: dup failed");
+	}
+	if(dup2(fd_open, 1) == -1)
+	{
+		perror("smash error: dup2 failed");
+	}
+
+
+	if(close(fd_open) == -1) 
+	{ 
+		perror("smash error: close failed");
+	}
+
 	cmd->execute();
 		
-	int fd_close = close(fd_open);
-	if(fd_close == -1)
+	if(dup2(stderr_copy, 2) == -1)
 	{
-		cout << "smash error: close failed" << endl;
+		perror("smash error: dup2 failed");
 	}
 	if(dup2(stdout_copy, 1) == -1)
 	{
-		cerr << "smash error: dup2 failed" << endl;
-	}
-	if(dup2(stderr_copy, 2) == -1)
-	{
-		cerr << "smash error: dup2 failed" << endl;
+		perror("smash error: dup2 failed");
 	}
 	if(close(stdout_copy) == -1)
 	{
-		cerr << "smash error: close failed" << endl;
+		perror("smash error: close failed");
 	}
 	if(close(stderr_copy) == -1)
 	{
-		cerr << "smash error: close failed" << endl;
+		perror("smash error: close failed");
 	}
 }
 
@@ -633,25 +660,25 @@ void PipeCommand::execute()
 			setpgrp();
 			if(close(pl[1]) == -1)
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			int stdin_copy = dup(0);
 			if(stdin_copy == -1)
 			{
-				cerr << "smash error: dup failed" << endl;
+				perror("smash error: dup failed");
 			}
 			if(dup2(pl[0], 0) == -1) 
 			{
-				cerr << "smash error: dup2 failed" << endl;
+				perror("smash error: dup2 failed");
 			}
 			cmd2->execute();	 
 			if(close(pl[0]) == -1) 
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			if(close(stdin_copy) == -1) 
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			exit(0);
 		}
@@ -659,29 +686,29 @@ void PipeCommand::execute()
 		{
 			if(close(pl[0]) == -1) 
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			int stdout_copy = dup(1); 
 			if(stdout_copy == 1)
 			{
-				cerr << "smash error: dup failed" << endl;
+				perror("smash error: dup failed");
 			}
 			if(dup2(pl[1], 1) == -1) 
 			{
-				cerr << "smash error: dup2 failed" << endl;
+				perror("smash error: dup2 failed");
 			}
 			if(close(pl[1]) == -1) 
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			cmd1->execute();  
 			if(dup2(stdout_copy, 1) == -1) 
 			{
-				cerr << "smash error: dup2 failed" << endl;
+				perror("smash error: dup2 failed");
 			}
 			if(close(stdout_copy) == -1) 
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			int status;
 			waitpid(pid, &status, WUNTRACED);
@@ -695,25 +722,25 @@ void PipeCommand::execute()
 			setpgrp();
 			if(close(pl[1]) == -1) 
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			int stdin_copy = dup(0); 
 			if(stdin_copy == -1) 
 			{
-				cerr << "smash error: dup failed" << endl;
+				perror("smash error: dup failed");
 			}
 			if(dup2(pl[0], 0) == -1) 
 			{
-				cerr << "smash error: dup2 failed" << endl;
+				perror("smash error: dup2 failed");
 			}
 			cmd2->execute();	 
 			if(close(pl[0]) == -1) 
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			if(close(stdin_copy) == -1)
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			exit(0);
 		}
@@ -721,29 +748,29 @@ void PipeCommand::execute()
 		{
 			if(close(pl[0]) == -1)
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			int stderr_copy = dup(2);
 			if(stderr_copy == -1)
 			{
-				cerr << "smash error: dup failed" << endl;
+				perror("smash error: dup failed");
 			}
 			if(dup2(pl[1], 2) == -1)
 			{
-				cerr << "smash error: dup2 failed" << endl;
+				perror("smash error: dup2 failed");
 			}
 			if(close(pl[1]) == -1) 
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			cmd1->execute();
 			if(dup2(stderr_copy, 2) == -1)
 			{
-				cerr << "smash error: dup2 failed" << endl;
+				perror("smash error: dup2 failed");
 			}
 			if(close(stderr_copy) == -1)
 			{
-				cerr << "smash error: close failed" << endl;
+				perror("smash error: close failed");
 			}
 			int status;
 			waitpid(pid, &status, WUNTRACED);
@@ -852,7 +879,7 @@ void JobsList::updateJobstatusByPlace(int a_viJobs)
 	pid_t w = waitpid(m_pvJobs.at(a_viJobs)->PID, &wstatus, WNOHANG | WUNTRACED);
     if(w == -1) 
     {
-         perror("waitpid");
+         perror("smash error: waitpid failed");
     }
     else if(w > 0)
     {
