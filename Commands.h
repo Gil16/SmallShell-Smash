@@ -192,6 +192,13 @@ class CopyCommand : public BuiltInCommand {
 	void execute() override;
 };
 
+class LsCommand : public BuiltInCommand {
+ public:
+	LsCommand(const char* cmd_line) : BuiltInCommand(cmd_line) {}
+	~LsCommand() {}
+	void execute() override;
+};
+
 
 
 class SmallShell {

@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <dirent.h> 
 
 #include "Commands.h"
 #include "Utilities.h"
@@ -102,6 +103,10 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 	else if(no_us_args[0].compare("kill") == 0)
     {
 		return new KillCommand(no_us_cmd_line);
+	}
+	else if(no_us_args[0].compare("ls") == 0)
+    {
+		return new LsCommand(no_us_cmd_line);
 	}
 	else if(args[0].compare("fg") == 0)
     {
@@ -283,7 +288,25 @@ void KillCommand::execute()
 	cout << "signal number " << sigStr << " was sent to pid " << job->PID << endl;
 }
 
-void ForegroundCommand::execute(){
+void LsCommand::execute()
+{
+	struct dirent **namelist;
+	int i,n;
+
+    n = scandir(".", &namelist, 0, alphasort);
+    if (n < 0)
+        perror("scandir");
+    else {
+        for (i = 0; i < n; i++) {
+            printf("%s\n", namelist[i]->d_name);
+            free(namelist[i]);
+            }
+        }
+    free(namelist);  
+}
+
+void ForegroundCommand::execute()
+{
 	vector<string> s_cmd;
 	split(c_cmd_line, s_cmd);
 	SmallShell& smash = SmallShell::getInstance();
@@ -355,7 +378,8 @@ void ForegroundCommand::execute(){
 	}
 }
 
-void BackgroundCommand::execute(){
+void BackgroundCommand::execute()
+{
 	vector<string> s_cmd;
 	split(c_cmd_line, s_cmd);
 	SmallShell& smash = SmallShell::getInstance();
@@ -423,7 +447,8 @@ void BackgroundCommand::execute(){
 	}
 }
 
-void ExternalCommand::execute(){
+void ExternalCommand::execute()
+{
 	vector<string> s_cmd;
 	split(c_cmd_line, s_cmd);
 	SmallShell& smash = SmallShell::getInstance();
@@ -779,7 +804,8 @@ void PipeCommand::execute()
 }
 
 
-int JobsList::getLastJobId() {
+int JobsList::getLastJobId()
+{
 	int max = 0;
     for (uint i=0 ; i < m_pvJobs.size() ; i++) 
     {
@@ -851,7 +877,6 @@ void JobsList::printJobsList()
 		}
    }
 }
-
 
 void JobsList::printJobByPlace(int a_viJobs)
 {
@@ -1036,7 +1061,6 @@ JobEntry* JobsList::getLastStoppedJob()
 }
 
 // -----here functions of JobsList end-------
-
 
 
 void SmallShell::executeCommand(const char *cmd_line) {
