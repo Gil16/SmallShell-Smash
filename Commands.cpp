@@ -127,6 +127,10 @@ Command* SmallShell::CreateCommand(const char* cmd_line) {
 		else 
 			cerr << "smash error: cp: invalid arguments" << endl;
 	}
+	else if(args[0].compare("timeout") == 0)
+    {
+		return new TimeoutCommand(cmd_line);
+	}
 	else 
 	{
 		return new ExternalCommand(cmd_line);
@@ -491,7 +495,7 @@ void ExternalCommand::execute()
 			smash.m_pForeground = nullptr;
 		}
 	}
-	delete [] temp_cmd;
+	delete[] temp_cmd;
 }
 
 void JobsList::printJobBeforeQuit(JobEntry* job)
@@ -803,6 +807,15 @@ void PipeCommand::execute()
 	}
 }
 
+void TimeoutCommand::execute()
+{
+	vector<string> args;
+	split (c_cmd_line, args);	
+	//SmallShell& smash = SmallShell::getInstance();
+	//JobsList* jobs_list = smash.GetJobList();
+	// ????
+}
+
 
 int JobsList::getLastJobId()
 {
@@ -850,7 +863,7 @@ void JobsList::addJob(JobEntry* job)
 
 void JobsList::addJobToForeground(string a_strCommand, int a_nPid) // sets jobId to -1 since it was never on joblist
 {
-	SmallShell::m_pForeground = new JobEntry(-1, a_nPid, a_strCommand, eJobStatus_Foreground, time(NULL));
+	SmallShell::m_pForeground = new JobEntry(-1, a_nPid, a_strCommand, eJobStatus_Foreground, time(NULL), time(NULL));
 }
 
 void JobsList::applyToAll(void (*a_pfun)(int))
@@ -885,7 +898,7 @@ void JobsList::printJobByPlace(int a_viJobs)
 	cout << " : " << m_pvJobs.at(a_viJobs)->PID << " ";
 	
 	time_t tactual_time = time(NULL);
-	double elapsed_time = difftime(tactual_time,m_pvJobs.at(a_viJobs)->time_started);
+	auto elapsed_time = difftime(m_pvJobs.at(a_viJobs)->is_stopped ? m_pvJobs.at(a_viJobs)->time_ended : tactual_time, m_pvJobs.at(a_viJobs)->time_started);
 	cout << elapsed_time << " secs";
 	
 	if(m_pvJobs.at(a_viJobs)->status == eJobStatus_Stopped)

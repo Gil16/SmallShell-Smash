@@ -71,6 +71,14 @@ class ShowPidCommand : public BuiltInCommand {
 	void execute() override ;
 };
 
+class TimeoutCommand : public Command {
+ public:
+	TimeoutCommand(const char* cmd_line) : Command(cmd_line) {}
+	virtual ~TimeoutCommand() {}
+	void execute() override;
+};
+
+
 typedef enum {
         eJobStatus_Stopped,
         eJobStatus_Background,
@@ -85,14 +93,18 @@ struct JobEntry {
 	string sCommand;
 	EJobStatus status; // 0-stopped,1-backgrounded,2-foregrounded,3-finished
 	time_t time_started;
+	time_t time_ended;
+	bool is_stopped;
 	   
-	JobEntry(int nid, pid_t pid, string scommand, EJobStatus stat, time_t t_started)
+	JobEntry(int nid, pid_t pid, string scommand, EJobStatus stat, time_t t_started, time_t t_ended = -1, bool t_stopped = false)
 	{
 		nId = nid;
 		PID = pid;
 		sCommand = scommand;
 		status = stat;
 		time_started = t_started;
+		time_ended = t_ended;
+		is_stopped = t_stopped;
 	}
 };
 

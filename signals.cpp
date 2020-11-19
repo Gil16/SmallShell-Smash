@@ -1,6 +1,7 @@
 #include <iostream>
 #include <signal.h>
 #include "signals.h"
+#include <time.h>
 #include "Commands.h"
 
 using namespace std;
@@ -12,6 +13,9 @@ void ctrlZHandler(int sig_num) {
 	if(!foreground)
 		return;
 	foreground->status = EJobStatus::eJobStatus_Stopped;
+	foreground->is_stopped = true;
+	foreground->time_ended = time(NULL);
+	
 	smash.m_pJobsList->addJob(foreground);
 	kill(foreground->PID, SIGSTOP);	
 	cout << "smash: process " << foreground->PID << " was stopped" << endl;
@@ -31,3 +35,8 @@ void ctrlCHandler(int sig_num) {
 	smash.m_pJobsList->removeJobByPID(foreground->PID);
 	smash.m_pForeground = nullptr;
 }
+
+void alarmHandler(int sig_num) {
+  // TODO: Add your implementation
+}
+
